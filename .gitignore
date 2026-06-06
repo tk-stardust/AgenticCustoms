@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+venv/
+
+# Environment — 敏感信息不入库
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+
+# Data / runtime
+chroma_data/
+*.db
+
+# Frontend
+node_modules/
+frontend/dist/
+
+# Docker volumes
+mysql_data/

@@ -1,0 +1,43 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_dev_only}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-agentic_customs}
+      MYSQL_USER: ${MYSQL_USER:-agentic}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-agentic_dev_only}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: dev
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${MYSQL_USER:-agentic}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-agentic_dev_only}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-agentic_customs}
+      CHROMA_PERSIST_DIR: /app/chroma_data
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - chroma_data:/app/chroma_data
+
+volumes:
+  mysql_data:
+  chroma_data:
