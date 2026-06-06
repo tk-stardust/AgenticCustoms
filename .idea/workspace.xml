@@ -2,12 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="862dfcb7-77e8-40a5-a8e7-eae56d6170db" name="更改" comment="需求">
-      <change afterPath="$PROJECT_DIR$/.idea/AgenticCustoms.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/项目需求/基于Agentic RAG与多智能体协作的跨境合规贸易与关税智能申报平台.md" beforeDir="false" afterPath="$PROJECT_DIR$/项目需求/基于Agentic RAG与多智能体协作的跨境合规贸易与关税智能申报平台.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -17,6 +12,12 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "tk-stardust"
+  }
+}]]></component>
   <component name="GithubPullRequestsUISettings"><![CDATA[{
   "selectedUrlAndAccountId": {
     "url": "https://github.com/tk-stardust/AgenticCustoms.git",
@@ -59,7 +60,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1780727575177</updated>
-      <workItem from="1780727576199" duration="399000" />
+      <workItem from="1780727576199" duration="640000" />
     </task>
     <task id="LOCAL-00001" summary="需求">
       <option name="closed" value="true" />
@@ -69,7 +70,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780727887713</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="需求">
+      <option name="closed" value="true" />
+      <created>1780728162452</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1780728162452</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
