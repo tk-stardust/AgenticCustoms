@@ -11,10 +11,9 @@ import type {
   StepError,
 } from '@/types'
 import { classifyCommodity } from '@/api/classify'
-import { runFullPipeline, type PipelineRequest } from '@/api/pipeline'
+import { runFullPipeline } from '@/api/pipeline'
 
 export const usePipelineStore = defineStore('pipeline', () => {
-  // ---- 状态 ----
   const requestId = ref<string | null>(null)
   const commodity = ref<Commodity | null>(null)
   const targetCountry = ref<string>('US')
@@ -27,11 +26,9 @@ export const usePipelineStore = defineStore('pipeline', () => {
   const loading = ref(false)
   const errors = ref<StepError[]>([])
 
-  // ---- 计算属性 ----
   const hasErrors = computed(() => errors.value.length > 0)
   const isComplete = computed(() => currentStep.value === 'done')
 
-  // ---- 操作 ----
   async function runClassify(input: Commodity) {
     commodity.value = input
     currentStep.value = 'classifying'
@@ -47,15 +44,16 @@ export const usePipelineStore = defineStore('pipeline', () => {
     }
   }
 
-  async function runPipeline(input: PipelineRequest) {
-    commodity.value = input.commodity
-    targetCountry.value = input.target_country
+  async function runPipeline(commodityInput: Commodity, country: string) {
+    commodity.value = commodityInput
+    targetCountry.value = country
     currentStep.value = 'classifying'
     loading.value = true
     errors.value = []
     try {
-      const result = await runFullPipeline(input)
+      const result = await runFullPipeline(commodityInput, country)
       documents.value = result
+      // 从 documents 中提取各 Agent 结果用于展示
       currentStep.value = 'done'
     } catch (e: unknown) {
       errors.value.push({ step: 'pipeline', message: (e as Error).message })

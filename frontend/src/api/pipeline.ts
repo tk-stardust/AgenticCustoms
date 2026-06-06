@@ -1,12 +1,13 @@
 import client from './client'
-import type { Commodity, DeclarationDoc, ApiResponse } from '@/types'
+import type { Commodity, DeclarationDoc } from '@/types'
 
-export interface PipelineRequest {
-  commodity: Commodity
-  target_country: string
-}
-
-export async function runFullPipeline(req: PipelineRequest): Promise<DeclarationDoc> {
-  const { data } = await client.post<ApiResponse<DeclarationDoc>>('/pipeline/full', req)
-  return data.data
+export async function runFullPipeline(
+  commodity: Commodity,
+  targetCountry: string = 'US',
+): Promise<DeclarationDoc> {
+  const { data } = await client.post<DeclarationDoc>(
+    `/pipeline/full?target_country=${targetCountry}`,
+    commodity,
+  )
+  return data
 }

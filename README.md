@@ -77,22 +77,40 @@ AgenticCustoms/
 │   │   ├── retriever.py           # 商品特征拆解 + 多轮检索
 │   │   └── seed.py               # MySQL → Chroma 同步脚本
 │   │
-│   ├── agents/                    # 多智能体
-│   │   ├── base.py                # Agent 基类(输入输出校验)
-│   │   └── hs_classifier/
-│   │       └── agent.py           # HS编码推理Agent(RAG+LLM)
+│   ├── agents/                    # 五大智能体
+│   │   ├── base.py                # Agent 基类（输入输出校验）
+│   │   ├── hs_classifier/         # ① HS编码推理（RAG + LLM）
+│   │   ├── tariff_calculator/     # ② 关税计算（查税率表 + LLM）
+│   │   ├── compliance_checker/    # ③ 合规校验（制裁匹配 + LLM）
+│   │   ├── origin_matcher/        # ④ 原产地匹配（FTA规则 + LLM）
+│   │   └── doc_generator/         # ⑤ 申报文件生成 + 交叉校验
 │   │
-│   ├── orchestration/             # [待开发] LangGraph编排
+│   ├── orchestration/             # LangGraph 编排
+│   │   ├── state.py               # 全流程共享状态
+│   │   └── graph.py               # classify → 并行 → document 拓扑
 │   │
 │   ├── api/                       # API 路由
 │   │   ├── deps.py                # 依赖注入
 │   │   └── routes/
 │   │       ├── classify.py        # POST /api/classify
+│   │       ├── pipeline.py        # POST /api/pipeline/full
 │   │       └── pages.py           # 前端页面路由（SPA 刷新不 404）
 │   └── tests/                     # [待开发] 测试
 │
 ├── frontend/                      # Vue3 + Vite 前端
-├── docker-compose.yml             # MySQL + Chroma + Backend
+│   └── src/
+│       ├── views/
+│       │   ├── ClassifyView.vue   # HS归类页（表单 + 结果展示）
+│       │   ├── PipelineView.vue   # 一键全流程页
+│       │   ├── DashboardView.vue  # [待开发] 风险看板
+│       │   └── HistoryView.vue    # [待开发] 历史记录
+│       ├── stores/pipeline.ts     # Pinia 流水线状态
+│       ├── api/                   # Axios API 调用
+│       ├── types/                 # TypeScript 类型定义
+│       └── router/                # Vue Router
+│
+├── .env.example                   # 环境变量模板
+├── docker-compose.yml             # MySQL + Backend
 ├── Dockerfile.backend
 └── README.md
 ```
@@ -116,33 +134,44 @@ AgenticCustoms/
 ### 环境要求
 
 - Python >= 3.11
-- Docker & Docker Compose
-- MySQL 8.0 (Docker 提供)
+- MySQL 8.0（本机或 Docker）
+- DashScope API Key（通义千问 Qwen-Plus）
 
 ### 本地开发
 
 ```bash
-# 1. 启动基础设施
-docker compose up -d mysql
+# 1. 创建数据库
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS agentic_customs CHARACTER SET utf8mb4;"
 
-# 2. 安装 Python 依赖
+# 2. 配置环境变量
+cp .env.example .env
+# 编辑 .env 填入 MYSQL_PASSWORD、DASHSCOPE_API_KEY、EMBEDDING_MODEL_PATH
+
+# 3. 安装依赖
 cd backend
 pip install -e ".[dev]"
 
-# 3. 配置环境变量 (可选，有默认值)
-cp .env.example .env
+# 4. 灌入种子数据（首次运行）
+python -m data.seed.runner
+python -m rag.seed
 
-# 4. 启动开发服务器
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+# 5. 构建前端
+cd ../frontend
+npm install
+npm run build
+
+# 6. 启动服务
+cd ../backend
+python main.py
 ```
+
+访问 `http://localhost:8000` 使用完整功能。`/docs` 查看 Swagger API 文档。
 
 ### Docker 一键启动
 
 ```bash
 docker compose up -d
 ```
-
-访问 `http://localhost:8000/health` 验证服务状态。
 
 ## 实施路线图
 
@@ -163,18 +192,19 @@ docker compose up -d
 - [x] `/api/classify` 接口（17s端到端，返回编码+置信度+推理链）
 - [x] 前端归类页面（表单输入 → 展示编码/置信度/推理路径/条文溯源）
 
-### Phase 3 — 多智能体协作
-- [ ] 关税计算 Agent
-- [ ] 合规校验 Agent
-- [ ] 原产地匹配 Agent
-- [ ] 申报文件生成 Agent
-- [ ] LangGraph 编排（HS推理 → 并行三 Agent → 文件生成）
-- [ ] `/api/pipeline/full` 接口
+### Phase 3 — 多智能体协作 ✅ 已完成
+- [x] 关税计算 Agent（税率表查询 + LLM 分析）
+- [x] 合规校验 Agent（制裁匹配 + LLM 风险评估）
+- [x] 原产地匹配 Agent（FTA 规则匹配 + 策略推荐）
+- [x] 申报文件生成 Agent（汇总 + LLM 生成 + 交叉校验）
+- [x] LangGraph 编排（HS → 并行三 Agent → 文件生成）
+- [x] `/api/pipeline/full` 接口（全流程 40-60s）
+- [x] 一键全流程前端页面（PipelineView）
 
 ### Phase 4 — 前端完善 + 部署
-- [ ] 一键全流程页面（PipelineView）
-- [ ] ECharts 风险看板
-- [ ] 历史记录查询
+- [ ] ECharts 风险看板（DashboardView）
+- [ ] 历史记录查询（HistoryView）
+- [ ] 申报文件 PDF 下载
 - [ ] Docker 生产部署
 - [ ] 单元测试 & 集成测试
 
