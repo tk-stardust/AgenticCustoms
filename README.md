@@ -60,18 +60,38 @@ AgenticCustoms/
 │   ├── shared/                    # 共享基础设施
 │   │   ├── config.py              # 环境配置(pydantic-settings)
 │   │   ├── errors.py              # 业务异常定义
-│   │   └── logger.py              # 结构化日志(structlog)
+│   │   ├── logger.py              # 结构化日志(structlog)
+│   │   └── llm.py                 # LLM 调用适配器(DashScope)
 │   │
 │   ├── data/                      # 数据层
-│   │   └── models.py              # SQLAlchemy ORM 模型
+│   │   ├── db/
+│   │   │   ├── models.py          # 4张ORM表(hs_codes/tariff/sanctions/declarations)
+│   │   │   └── database.py        # 异步引擎 + 会话 + 自动建表
+│   │   └── seed/
+│   │       ├── data.py            # 28条HS编码+14条税率+3条制裁
+│   │       └── runner.py          # 幂等入库脚本
 │   │
-│   ├── rag/                       # [待开发] RAG引擎
-│   ├── agents/                    # [待开发] 5个智能体
+│   ├── rag/                       # RAG引擎
+│   │   ├── embedding.py           # bge-base-zh-v1.5 本地嵌入模型
+│   │   ├── vector_store.py        # Chroma 向量库CRUD
+│   │   ├── retriever.py           # 商品特征拆解 + 多轮检索
+│   │   └── seed.py               # MySQL → Chroma 同步脚本
+│   │
+│   ├── agents/                    # 多智能体
+│   │   ├── base.py                # Agent 基类(输入输出校验)
+│   │   └── hs_classifier/
+│   │       └── agent.py           # HS编码推理Agent(RAG+LLM)
+│   │
 │   ├── orchestration/             # [待开发] LangGraph编排
-│   ├── api/                       # [待开发] FastAPI路由
+│   │
+│   ├── api/                       # API 路由
+│   │   ├── deps.py                # 依赖注入
+│   │   └── routes/
+│   │       ├── classify.py        # POST /api/classify
+│   │       └── pages.py           # 前端页面路由（SPA 刷新不 404）
 │   └── tests/                     # [待开发] 测试
 │
-├── frontend/                      # Vue3 前端
+├── frontend/                      # Vue3 + Vite 前端
 ├── docker-compose.yml             # MySQL + Chroma + Backend
 ├── Dockerfile.backend
 └── README.md
@@ -135,13 +155,13 @@ docker compose up -d
 - [x] Docker 环境（MySQL + Backend）
 - [x] 前端骨架（Vite + Vue3 + Pinia + Axios + Element Plus + 4 页面路由）
 
-### Phase 2 — RAG 引擎 + HS 归类（最小闭环）🔄 下一步
-- [ ] Chroma 向量库初始化
-- [ ] 商品特征拆解 & Query 改写
-- [ ] 条文溯源校验
-- [ ] HS 编码推理 Agent
-- [ ] `/api/classify` 接口
-- [ ] 前端归类页面（输入描述 → 展示编码 + 推理路径）
+### Phase 2 — RAG 引擎 + HS 归类（最小闭环）✅ 已完成
+- [x] Chroma 向量库初始化（28条HS编码已嵌入）
+- [x] 商品特征拆解 & Query 改写（LLM驱动的多轮检索）
+- [x] 条文溯源校验（推理路径含WCO注释引用）
+- [x] HS 编码推理 Agent（RAG检索 + LLM推理合成）
+- [x] `/api/classify` 接口（17s端到端，返回编码+置信度+推理链）
+- [x] 前端归类页面（表单输入 → 展示编码/置信度/推理路径/条文溯源）
 
 ### Phase 3 — 多智能体协作
 - [ ] 关税计算 Agent

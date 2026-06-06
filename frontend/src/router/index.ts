@@ -5,7 +5,7 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/pipeline',
+      redirect: '/classify',
     },
     {
       path: '/classify',

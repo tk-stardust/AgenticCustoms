@@ -1,5 +1,9 @@
+"""业务异常体系——每个模块一个异常类，code 用于 API 响应的机器可读错误码"""
+
+
 class AppError(Exception):
-    """应用基类异常——所有业务异常由此派生"""
+    """应用基类异常"""
+
     def __init__(self, message: str, code: str = "INTERNAL_ERROR"):
         self.message = message
         self.code = code
@@ -7,7 +11,7 @@ class AppError(Exception):
 
 
 class HsClassificationError(AppError):
-    """HS编码归类失败"""
+    """HS 编码归类失败"""
     def __init__(self, message: str):
         super().__init__(message, code="HS_CLASSIFICATION_ERROR")
 
@@ -37,6 +41,6 @@ class DocumentGenerationError(AppError):
 
 
 class RagRetrievalError(AppError):
-    """RAG检索失败"""
+    """RAG 检索失败"""
     def __init__(self, message: str):
         super().__init__(message, code="RAG_RETRIEVAL_ERROR")

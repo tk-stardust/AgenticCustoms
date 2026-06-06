@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     # Embedding
     embedding_model: str = "bge-base-zh-v1.5"
+    embedding_model_path: str = ""  # 本地模型路径，空则从HF下载
 
     @property
     def mysql_url(self) -> str:
@@ -36,6 +37,7 @@ class Settings(BaseSettings):
             f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}"
         )
 
+    # 从 backend/ 运行时，../ 指向项目根目录，读取统一的 .env
     model_config = dict(
         env_file="../.env",
         env_file_encoding="utf-8",
