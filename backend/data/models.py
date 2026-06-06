@@ -1,15 +1,9 @@
-from datetime import datetime, timezone
-
-from sqlalchemy import Column, Integer, String, Float, Text, DateTime, JSON
+from sqlalchemy import Column, Integer, String, Float, Text, DateTime, JSON, func
 from sqlalchemy.orm import DeclarativeBase
 
 
 class Base(DeclarativeBase):
     pass
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 class HsCode(Base):
@@ -27,7 +21,7 @@ class HsCode(Base):
     notes = Column(Text, nullable=True)
     effective_from = Column(DateTime, nullable=True)
     effective_to = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=_utcnow)
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class TariffSchedule(Base):
@@ -43,7 +37,7 @@ class TariffSchedule(Base):
     fta_name = Column(String(50), nullable=True)
     notes = Column(Text, nullable=True)
     effective_from = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=_utcnow)
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class SanctionEntry(Base):
@@ -56,7 +50,7 @@ class SanctionEntry(Base):
     restriction_type = Column(String(50), nullable=False)
     notes = Column(Text, nullable=True)
     effective_from = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=_utcnow)
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class Declaration(Base):
@@ -70,5 +64,5 @@ class Declaration(Base):
     target_country = Column(String(10), nullable=False)
     results = Column(JSON, nullable=True)
     status = Column(String(20), default="pending")
-    created_at = Column(DateTime, default=_utcnow)
-    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

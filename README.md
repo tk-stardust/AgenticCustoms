@@ -126,35 +126,37 @@ docker compose up -d
 
 ## 实施路线图
 
-### Phase 1 — 骨架搭建 ✅ 进行中
+### Phase 1 — 骨架搭建 ✅ 已完成
 - [x] 目录结构规划
-- [x] 领域实体定义 (Pydantic)
-- [x] 数据库模型 (SQLAlchemy)
-- [x] Docker 环境
-- [ ] 数据初始化脚本
+- [x] 领域实体定义（7 个 Pydantic 模型）
+- [x] 数据库模型（4 张表，启动时自动建表）
+- [x] 配置、异常、日志基础设施
+- [x] 种子数据（28 条 HS 编码 + 14 条税率 + 3 条制裁）
+- [x] Docker 环境（MySQL + Backend）
+- [x] 前端骨架（Vite + Vue3 + Pinia + Axios + Element Plus + 4 页面路由）
 
-### Phase 2 — RAG 引擎 (计划中)
-- [ ] 向量检索器 (Chroma)
-- [ ] Query 改写与拆解
-- [ ] 条文溯源标注
-
-### Phase 3 — 多智能体 (计划中)
+### Phase 2 — RAG 引擎 + HS 归类（最小闭环）🔄 下一步
+- [ ] Chroma 向量库初始化
+- [ ] 商品特征拆解 & Query 改写
+- [ ] 条文溯源校验
 - [ ] HS 编码推理 Agent
+- [ ] `/api/classify` 接口
+- [ ] 前端归类页面（输入描述 → 展示编码 + 推理路径）
+
+### Phase 3 — 多智能体协作
 - [ ] 关税计算 Agent
 - [ ] 合规校验 Agent
 - [ ] 原产地匹配 Agent
 - [ ] 申报文件生成 Agent
-- [ ] LangGraph 编排
+- [ ] LangGraph 编排（HS推理 → 并行三 Agent → 文件生成）
+- [ ] `/api/pipeline/full` 接口
 
-### Phase 4 — API + 前端 (计划中)
-- [ ] FastAPI 接口层
-- [ ] Vue3 前端页面
-- [ ] 风险看板与文件下载
-
-### Phase 5 — 测试 + 部署 (计划中)
-- [ ] 单元测试与集成测试
+### Phase 4 — 前端完善 + 部署
+- [ ] 一键全流程页面（PipelineView）
+- [ ] ECharts 风险看板
+- [ ] 历史记录查询
 - [ ] Docker 生产部署
-- [ ] 项目文档
+- [ ] 单元测试 & 集成测试
 
 ## 设计原则
 
