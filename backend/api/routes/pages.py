@@ -10,6 +10,11 @@ router = APIRouter(tags=["pages"])
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "frontend", "dist")
 
 
+@router.get("/favicon.png")
+async def favicon():
+    return FileResponse(os.path.join(FRONTEND_DIR, "favicon.png"))
+
+
 def _index() -> FileResponse:
     """返回 Vue SPA 入口 HTML"""
     return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))

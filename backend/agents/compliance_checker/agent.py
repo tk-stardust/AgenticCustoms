@@ -29,23 +29,31 @@ HS编码：{hs_code}
 ## 制裁名单检索结果
 {sanctions}
 
-## 评估维度
-1. 是否命中制裁实体清单
-2. 是否属于禁限品（武器、敏感技术、濒危物种等）
-3. 是否需要出口许可证
-4. 是否涉及环保法规（RoHS/REACH等）
+## 评估维度（逐项出具结论）
+1. 禁运清单：检查是否列入禁运品目录 → 通过/未通过/未查到数据
+2. 制裁名单：检查是否匹配制裁实体 → 通过/未通过/未查到数据
+3. 出口许可证：是否需要出口许可 → 不需要/需要（注明类型）/未查到数据
+4. 环保法规：RoHS/REACH等 → 不适用/需合规/未查到数据
 
-## 输出格式（严格JSON）
+## 输出格式（严格JSON，中文）
 ```json
 {{
-  "risk_level": "green",
-  "violations": [],
+  "risk_level": "green/yellow/red",
+  "violations": [{{"category": "禁运/制裁/许可证/环保", "description": "具体说明", "severity": "red/yellow/green", "source": "数据来源"}}],
   "license_required": false,
   "license_type": null,
   "sanctions_hit": false,
-  "summary": "合规评估概述"
+  "check_items": {{
+    "禁运清单": "✅ 未命中",
+    "制裁名单": "⚠️ 当前制裁库仅含 200 条 OFAC 数据，未覆盖全部实体，请人工复核",
+    "出口许可证": "✅ 不需要",
+    "环保合规": "⚠️ 未查到目标国 RoHS/REACH 数据，请人工确认"
+  }},
+  "summary": "逐项评估结论"
 }}
-```"""
+```
+
+**规则**：如制裁库只有 200 条数据，必须在"制裁名单"中标注"当前仅含部分数据，请人工复核"。任何维度缺少数据，标注"未查到"而非跳过。"""
 
 
 class ComplianceCheckerAgent(BaseAgent[ComplianceResult]):

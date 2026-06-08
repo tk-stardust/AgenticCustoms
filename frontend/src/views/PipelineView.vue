@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, onActivated } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { usePipelineStore } from '@/stores/pipeline'
 import type { Commodity } from '@/types'
 import { Check, Loading } from '@element-plus/icons-vue'
 
 const store = usePipelineStore()
-const form = ref<Commodity>({ name: '', description: '', material: '', function: '', usage: '' })
+const saved = localStorage.getItem("pipelineForm")
+const form = ref<Commodity>(saved ? JSON.parse(saved) : { name: '', description: '', material: '', function: '', usage: '' })
 const country = ref(store.targetCountry)
-onActivated(() => {
+onUnmounted(() => localStorage.setItem("pipelineForm", JSON.stringify(form.value)))
+onMounted(() => {
   if (!store.autoRun) return
   store.autoRun = false
   if (store.commodity?.name) {
@@ -53,7 +55,6 @@ const countryOptions = [
   { value: 'US', label: '🇺🇸 美国' },
   { value: 'EU', label: '🇪🇺 欧盟' },
   { value: 'VN', label: '🇻🇳 越南' },
-  { value: 'CN', label: '🇨🇳 中国' },
 ]
 
 const materialTags = ref<string[]>([])
@@ -82,7 +83,11 @@ async function onSubmit() {
       activePhase.value = agentPhase.value
     }
   }, 8000)
-  await store.runPipeline({ ...form.value }, country.value)
+  try {
+    await store.runPipeline({ ...form.value }, country.value)
+  } catch {
+    // error already in store.errors
+  }
   clearInterval(timer)
   activePhase.value = steps.length - 1
   agentPhase.value = agents.length - 1
@@ -100,7 +105,7 @@ function downloadReport() {
   const rid = store.documents?.request_id
   if (rid) window.open(`/api/pipeline/report/${rid}`, '_blank')
 }
-const showReport = computed(() => phase.value === 'done' && store.documents)
+const showReport = computed(() => phase.value === 'done' && !!store.documents)
 </script>
 
 <template>
@@ -155,13 +160,20 @@ const showReport = computed(() => phase.value === 'done' && store.documents)
           </el-form-item>
 
           <el-row :gutter="12">
-            <el-col :span="8">
+            <el-col :span="12">
               <el-form-item label="功能"><el-input v-model="form.function" placeholder="音乐播放" class="custom-input" clearable/></el-form-item>
             </el-col>
-            <el-col :span="8">
+            <el-col :span="12">
               <el-form-item label="用途"><el-input v-model="form.usage" placeholder="家庭娱乐" class="custom-input" clearable/></el-form-item>
             </el-col>
-            <el-col :span="8">
+          </el-row>
+          <el-row :gutter="12">
+            <el-col :span="12">
+              <el-form-item label="始发国">
+                <el-input value="🇨🇳 中国" disabled size="large" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
               <el-form-item label="目标国">
                 <el-select v-model="country" class="country-select" size="large">
                   <el-option v-for="o in countryOptions" :key="o.value" :value="o.value" :label="o.label" />
@@ -169,6 +181,19 @@ const showReport = computed(() => phase.value === 'done' && store.documents)
               </el-form-item>
             </el-col>
           </el-row>
+          <el-row :gutter="12">
+            <el-col :span="12">
+              <el-form-item label="货物数量（件）">
+                <el-input-number v-model="form.quantity" :min="1" size="large" style="width:100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="申报价值（元）">
+                <el-input-number v-model="form.declared_value" :min="0" :precision="2" size="large" style="width:100%" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+
 
           <button type="button" class="btn-start" :class="{ running: phase === 'running' }" :disabled="phase === 'running'" @click="onSubmit">
             <span v-if="phase !== 'running'">⚡ 开始全流程分析</span>
@@ -220,6 +245,10 @@ const showReport = computed(() => phase.value === 'done' && store.documents)
         </div>
 
         <!-- 完成状态：报告视图 -->
+        <div v-if="phase==='done' && !store.documents && store.hasErrors" style="padding:24px;text-align:center">
+          <p style="color:#ef4444;font-size:16px">⚠️ 分析出错</p>
+          <p style="color:#64748b;font-size:13px;margin-top:8px">{{ store.errors[0]?.message }}</p>
+        </div>
         <template v-if="showReport">
           <div class="report-header">
             <div class="report-done">✅ 全流程完成</div>

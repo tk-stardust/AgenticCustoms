@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { usePipelineStore } from '@/stores/pipeline'
 import type { Commodity } from '@/types'
@@ -7,7 +7,9 @@ import { Search, MagicStick, CopyDocument, Check, Camera } from '@element-plus/i
 import { ocrImage } from '@/api/ocr'
 
 const store = usePipelineStore()
-const form = ref<Commodity>({ name:'',description:'',material:'',function:'',usage:'' })
+const saved = localStorage.getItem('classifyForm')
+const form = ref<Commodity>(saved ? JSON.parse(saved) : { name:'',description:'',material:'',function:'',usage:'' })
+onUnmounted(() => localStorage.setItem('classifyForm', JSON.stringify(form.value)))
 const loadingStep = ref(0)
 const ocrLoading = ref(false)
 const ocrResult = ref<Commodity | null>(null)  // 仅存 OCR 识别结果，手动输入不触发

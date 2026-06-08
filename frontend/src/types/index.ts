@@ -25,6 +25,8 @@ export interface Commodity {
   function?: string
   usage?: string
   description: string
+  quantity?: number
+  declared_value?: number
   image_url?: string
 }
 

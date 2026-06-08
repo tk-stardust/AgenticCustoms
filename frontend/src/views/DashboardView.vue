@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onActivated } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -7,25 +7,20 @@ import { PieChart, BarChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { fetchHistory, type HistoryRecord } from '@/api/history'
+import { fetchStats, type DashboardStats } from '@/api/stats'
 
 use([PieChart, BarChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer])
 
 const router = useRouter()
 const records = ref<HistoryRecord[]>([])
+const stats = ref<DashboardStats>({ total: 0, pass_rate: 100, warnings: 0, hs_codes: 0 })
 const loading = ref(false)
 
-onActivated(async () => {
+onMounted(async () => {
   loading.value = true
-  try { records.value = await fetchHistory(50) }
+  try { stats.value = await fetchStats(); records.value = await fetchHistory(50) }
   finally { loading.value = false }
 })
-
-const stats = computed(() => ({
-  total: records.value.length || 127,
-  passRate: 96.8,
-  warnings: records.value.filter(r => r.results && !(r.results as any).cross_check_passed).length,
-  avgTime: records.value.length ? '42s' : '—',
-}))
 
 const pieOption = computed(() => ({
   title: { text: '申报国家分布', left: 'center', textStyle: { fontSize: 14, color: '#334155' } },
@@ -94,8 +89,8 @@ const riskMap: Record<string,{label:string;type:'success'|'warning'|'danger'}> =
         </div>
         <div class="stat-card">
           <div class="stat-label">合规通过率</div>
-          <div class="stat-value">{{ stats.passRate }}%</div>
-          <div class="progress-bar-sm"><div class="progress-fill-sm" style="width:96.8%"></div></div>
+          <div class="stat-value">{{ stats.pass_rate }}%</div>
+          <div class="progress-bar-sm"><div class="progress-fill-sm" :style="{ width: stats.pass_rate + '%' }"></div></div>
         </div>
         <div class="stat-card" style="cursor:pointer" @click="router.push('/history?filter=risk')">
           <div class="stat-label">风险预警</div>
@@ -103,9 +98,9 @@ const riskMap: Record<string,{label:string;type:'success'|'warning'|'danger'}> =
           <el-tag type="danger" size="small" effect="dark">待处理</el-tag>
         </div>
         <div class="stat-card">
-          <div class="stat-label">平均处理时间</div>
-          <div class="stat-value">{{ stats.avgTime }}</div>
-          <div class="stat-chg down">较上月 -15%</div>
+          <div class="stat-label">HS 编码库</div>
+          <div class="stat-value">{{ stats.hs_codes }}</div>
+          <div class="stat-chg down">已导入 485 条</div>
         </div>
       </div>
 

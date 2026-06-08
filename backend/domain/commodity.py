@@ -9,6 +9,8 @@ class Commodity(BaseModel):
     function: str | None = Field(default=None, description="功能用途")
     usage: str | None = Field(default=None, description="应用场景")
     description: str = Field(..., min_length=1, description="原始商品描述")
+    quantity: int = Field(default=1, ge=1, description="货物数量（件）")
+    declared_value: float = Field(default=0.0, ge=0, description="申报价值（元/美元）")
     image_url: str | None = Field(default=None, description="商品图片URL(OCR辅助)")
 
     def to_rag_query(self) -> str:

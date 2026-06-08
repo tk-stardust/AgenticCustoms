@@ -52,7 +52,7 @@ class SanctionEntry(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     entity_name = Column(String(300), nullable=False)
-    country = Column(String(10), nullable=True)
+    country = Column(String(100), nullable=True)
     list_type = Column(String(50), nullable=False)
     restriction_type = Column(String(50), nullable=False)
     notes = Column(Text, nullable=True)

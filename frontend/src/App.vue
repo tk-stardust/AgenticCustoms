@@ -21,7 +21,7 @@ const breadcrumbs: Record<string, string> = {
     <!-- 侧边栏 -->
     <el-aside :width="collapsed ? '64px' : '220px'" class="sidebar" style="flex-shrink:0">
       <div class="logo" :class="{ collapsed }">
-        <span class="logo-icon">🌐</span>
+        <img src="/favicon.png" class="logo-img" :class="{ small: collapsed }" />
         <span v-if="!collapsed" class="logo-text">AgenticCustoms</span>
       </div>
       <el-menu :default-active="route.path" :collapse="collapsed" @select="(path: string) => router.push(path)">
@@ -76,9 +76,7 @@ const breadcrumbs: Record<string, string> = {
       <main class="main-content">
         <router-view v-slot="{ Component }">
           <transition name="page-fade" mode="out-in">
-            <keep-alive>
-              <component :is="Component" />
-            </keep-alive>
+            <component :is="Component" />
           </transition>
         </router-view>
       </main>
@@ -99,7 +97,8 @@ const breadcrumbs: Record<string, string> = {
   padding: 0 16px; border-bottom: 1px solid rgba(255,255,255,.06);
 }
 .logo.collapsed { justify-content: center; padding: 0; }
-.logo-icon { font-size: 18px; color: #0d9488; flex-shrink: 0; }
+.logo-img { width: 28px; height: 28px; flex-shrink: 0; transition: all 0.25s; }
+.logo-img.small { width: 24px; height: 24px; }
 .logo-text { color: #fff; font-size: 15px; font-weight: 700; white-space: nowrap; letter-spacing: -.01em; }
 
 :deep(.el-menu) { border-right: none; background: transparent; padding: 8px 0; }

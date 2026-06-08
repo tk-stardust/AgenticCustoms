@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onActivated } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Search, Download } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -58,7 +58,7 @@ async function load() {
   finally { loading.value = false }
 }
 
-onActivated(load)
+onMounted(load)
 
 const filtered = computed(() => {
   let list = allRecords.value
