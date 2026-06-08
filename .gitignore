@@ -18,6 +18,10 @@ venv/
 chroma_data/
 *.db
 
+# 原始数据文件过大或含编码问题，不入库，本地下载
+backend/data/raw/*.pdf
+backend/data/raw/*.xml
+
 # Frontend
 node_modules/
 frontend/dist/
