@@ -121,34 +121,34 @@ const showReport = computed(() => phase.value === 'done' && store.documents)
         <h3 class="panel-title">商品信息</h3>
         <el-form :model="form" label-position="top">
           <el-form-item label="商品名称" required>
-            <el-input v-model="form.name" placeholder="例：蓝牙智能音箱" size="large" class="custom-input" />
+            <el-input v-model="form.name" placeholder="例：蓝牙智能音箱" size="large" class="custom-input" clearable/>
           </el-form-item>
           <el-form-item label="商品描述" required>
             <el-input v-model="form.description" type="textarea" :rows="3"
-              placeholder="外观、材质、工作原理、用途等" class="custom-input" />
+              placeholder="外观、材质、工作原理、用途等" class="custom-input" clearable/>
+          </el-form-item>
+
+          <!-- 材质独占一行 -->
+          <el-form-item label="材质">
+            <div class="tag-input-wrap" @click="materialInput && addMaterialTag()">
+              <span v-for="(t, i) in materialTags" :key="i" class="mat-tag">
+                {{ t }} <span class="mat-close" @click.stop="removeTag(i)">×</span>
+              </span>
+              <input v-model="materialInput" class="mat-input" placeholder="输入后回车添加"
+                @keydown.enter.prevent="addMaterialTag()" @blur="addMaterialTag" />
+            </div>
           </el-form-item>
 
           <el-row :gutter="12">
-            <el-col :span="6">
-              <el-form-item label="材质">
-                <div class="tag-input-wrap" @click="materialInput && addMaterialTag()">
-                  <span v-for="(t, i) in materialTags" :key="i" class="mat-tag">
-                    {{ t }} <span class="mat-close" @click.stop="removeTag(i)">×</span>
-                  </span>
-                  <input v-model="materialInput" class="mat-input" placeholder="输入后回车"
-                    @keydown.enter.prevent="addMaterialTag()" @blur="addMaterialTag" />
-                </div>
-              </el-form-item>
+            <el-col :span="8">
+              <el-form-item label="功能"><el-input v-model="form.function" placeholder="音乐播放" class="custom-input" clearable/></el-form-item>
             </el-col>
-            <el-col :span="6">
-              <el-form-item label="功能"><el-input v-model="form.function" placeholder="音乐播放" /></el-form-item>
+            <el-col :span="8">
+              <el-form-item label="用途"><el-input v-model="form.usage" placeholder="家庭娱乐" class="custom-input" clearable/></el-form-item>
             </el-col>
-            <el-col :span="6">
-              <el-form-item label="用途"><el-input v-model="form.usage" placeholder="家庭娱乐" /></el-form-item>
-            </el-col>
-            <el-col :span="6">
+            <el-col :span="8">
               <el-form-item label="目标国">
-                <el-select v-model="country" class="country-select">
+                <el-select v-model="country" class="country-select" size="large">
                   <el-option v-for="o in countryOptions" :key="o.value" :value="o.value" :label="o.label" />
                 </el-select>
               </el-form-item>
@@ -179,7 +179,7 @@ const showReport = computed(() => phase.value === 'done' && store.documents)
               <strong>{{ a.name }}</strong>
               <p>{{ a.desc }}</p>
             </div>
-            <el-tag size="small" type="info" round>等待中</el-tag>
+            <el-tag size="small" round class="tag-idle">等待中</el-tag>
           </div>
         </div>
 
@@ -197,10 +197,10 @@ const showReport = computed(() => phase.value === 'done' && store.documents)
               <p>{{ logs[i] || a.desc }}</p>
             </div>
             <el-tag v-if="agentState(i) === 'done'" size="small" type="success" round>已完成</el-tag>
-            <el-tag v-else-if="agentState(i) === 'running'" size="small" type="warning" round effect="dark">
-              <el-icon :size="12" style="margin-right:4px"><Loading /></el-icon> 运行中
+            <el-tag v-else-if="agentState(i) === 'running'" size="small" class="tag-running" round>
+              <el-icon :size="12" style="margin-right:4px"><Loading /></el-icon>处理中
             </el-tag>
-            <el-tag v-else size="small" type="info" round>等待中</el-tag>
+            <el-tag v-else size="small" round class="tag-idle">等待中</el-tag>
           </div>
         </div>
 
@@ -259,7 +259,6 @@ const showReport = computed(() => phase.value === 'done' && store.documents)
   </div>
 </template>
 
-
 <style scoped>
 /* ===== 布局 ===== */
 .page-header { margin-bottom: var(--space-5); }
@@ -289,8 +288,8 @@ const showReport = computed(() => phase.value === 'done' && store.documents)
 .flow-line.filled { background: #0d9488; }
 
 @keyframes dotPulse {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(13,148,136,.4); }
-  50% { transform: scale(1.15); box-shadow: 0 0 0 6px rgba(13,148,136,.1); }
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(13,148,136,.5); }
+  50% { transform: scale(1.25); box-shadow: 0 0 0 10px rgba(13,148,136,.15); }
 }
 
 /* ===== 面板公用 ===== */
@@ -304,12 +303,25 @@ const showReport = computed(() => phase.value === 'done' && store.documents)
 .panel-title { font-size: var(--font-size-lg); font-weight: 600; margin-bottom: var(--space-5); }
 
 /* ===== 表单 ===== */
-:deep(.custom-input .el-input__wrapper) { height: 44px; border-radius: 10px; }
+:deep(.el-row) { align-items: flex-start; }
+:deep(.custom-input .el-input__wrapper) {
+  height: 44px; border-radius: 10px;
+  border: 1px solid #e2e8f0; box-shadow: none;
+}
+:deep(.country-select .el-select__wrapper) {
+  min-height: 44px !important; border-radius: 10px !important;
+  border: 1px solid #e2e8f0 !important; box-shadow: none !important;
+}
+:deep(.country-select .el-select__wrapper:hover) {
+  border-color: #e2e8f0 !important;
+}
 
 .tag-input-wrap {
   display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
-  padding: 4px 8px; border: 1px solid #e2e8f0; border-radius: 10px; min-height: 36px;
+  padding: 4px 8px; border: 1px solid #e2e8f0; border-radius: 10px;
+  height: 80px; overflow-y: auto; width: 100%;
   cursor: text; background: #fff;
+  align-self: flex-start;
 }
 .tag-input-wrap:focus-within { border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,.08); }
 .mat-tag {
@@ -320,7 +332,6 @@ const showReport = computed(() => phase.value === 'done' && store.documents)
 .mat-close { cursor: pointer; font-weight: 700; color: #5eead4; }
 .mat-input { border: none; outline: none; flex: 1; min-width: 60px; font-size: 13px; background: transparent; }
 
-.country-select :deep(.el-input__wrapper) { border-radius: 10px; }
 
 .btn-start {
   width: 100%; padding: 14px 40px; font-size: 16px; font-weight: 600; color: #fff;
@@ -342,8 +353,8 @@ const showReport = computed(() => phase.value === 'done' && store.documents)
 .progress-bar { height: 3px; border-radius: 2px; background: #e2e8f0; margin-top: 8px; overflow: hidden; }
 .progress-fill { height: 100%; background: #0d9488; border-radius: 2px; transition: width 0.5s ease; }
 
-/* ===== Agent 卡片网格 ===== */
-.agent-grid { display: flex; flex-direction: column; gap: 10px; }
+/* ===== Agent 卡片 ===== */
+.agent-grid { display: flex; flex-direction: column; gap: 12px; }
 
 .agent-card {
   display: flex; align-items: center; gap: 14px;
@@ -355,23 +366,13 @@ const showReport = computed(() => phase.value === 'done' && store.documents)
 }
 .agent-card:hover { transform: translateY(-1px); }
 .agent-card.live { position: relative; overflow: hidden; }
-.agent-card.running {
-  background: #fff; border-color: #0d9488;
-  box-shadow: 0 4px 12px rgba(13,148,136,.08);
-  animation: fadeUp 0.3s cubic-bezier(0.4,0,0.2,1) both;
-}
-.agent-card.done {
-  background: #fff; border-color: #e2e8f0;
-  opacity: .85;
-}
+.agent-card.running { background: #fff; border-color: #0d9488; box-shadow: 0 4px 12px rgba(13,148,136,.08); }
+.agent-card.done { background: #fff; border-color: #e2e8f0; opacity: .85; }
 
-.agent-top-bar {
-  position: absolute; top: 0; left: 0; height: 2px; background: #0d9488;
-  animation: barSweep 0.5s cubic-bezier(0.4,0,0.2,1) both;
-}
+.agent-top-bar { position: absolute; top: 0; left: 0; height: 2px; background: #0d9488; animation: barSweep 0.5s cubic-bezier(0.4,0,0.2,1) both; }
 @keyframes barSweep { from { width: 0; } to { width: 100%; } }
 
-.agent-icon { font-size: 22px; flex-shrink: 0; }
+.agent-icon { font-size: 22px; flex-shrink: 0; display: flex; align-items: center; }
 .agent-card.running .agent-icon { animation: bounceIcon 1s ease infinite; }
 @keyframes bounceIcon { 0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)} }
 
@@ -380,16 +381,16 @@ const showReport = computed(() => phase.value === 'done' && store.documents)
 .agent-info p { font-size: 12px; color: #94a3b8; margin: 2px 0 0; }
 .agent-card.running .agent-info p { color: #0d9488; font-weight: 500; }
 
-/* ===== 报告视图 ===== */
+.tag-idle { background: var(--color-gray-100) !important; color: var(--color-gray-500) !important; border-color: var(--color-gray-200) !important; }
+.tag-running { display: inline-flex; align-items: center; background: rgba(59,130,246,.1) !important; color: #3b82f6 !important; border-color: transparent !important; }
+
+/* ===== 报告 ===== */
 .report-header { margin-bottom: var(--space-5); }
 .report-done { font-size: 18px; font-weight: 700; color: #1e293b; margin-bottom: var(--space-2); }
 .agent-badges { display: flex; flex-wrap: wrap; gap: 8px; }
 .agent-badge-done { font-size: 11px; color: #64748b; }
 
-.report-section {
-  margin-bottom: var(--space-4); padding-bottom: var(--space-4);
-  border-bottom: 1px solid #f1f5f9;
-}
+.report-section { margin-bottom: var(--space-4); padding-bottom: var(--space-4); border-bottom: 1px solid #f1f5f9; }
 .report-section:last-of-type { border-bottom: none; }
 .report-section h4 { font-size: 14px; font-weight: 600; color: #334155; margin-bottom: var(--space-3); }
 .report-hs { display: flex; align-items: center; gap: 12px; }
@@ -397,16 +398,9 @@ const showReport = computed(() => phase.value === 'done' && store.documents)
 .compliance-text { font-size: 13px; color: #64748b; line-height: 1.7; }
 
 .report-actions { display: flex; gap: var(--space-3); margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid #f1f5f9; }
-.btn-primary {
-  padding: 10px 24px; font-size: 14px; font-weight: 600; color: #fff;
-  background: linear-gradient(135deg, #0d9488, #0f766e); border: none; border-radius: 10px; cursor: pointer;
-  transition: all 0.2s ease;
-}
+.btn-primary { padding: 10px 24px; font-size: 14px; font-weight: 600; color: #fff; background: linear-gradient(135deg, #0d9488, #0f766e); border: none; border-radius: 10px; cursor: pointer; transition: all 0.2s ease; }
 .btn-primary:hover { filter: brightness(1.08); }
-.btn-ghost {
-  padding: 10px 20px; font-size: 14px; color: #64748b; background: transparent;
-  border: 1px solid #e2e8f0; border-radius: 10px; cursor: pointer;
-}
+.btn-ghost { padding: 10px 20px; font-size: 14px; color: #64748b; background: transparent; border: 1px solid #e2e8f0; border-radius: 10px; cursor: pointer; }
 .btn-ghost:hover { border-color: #0d9488; color: #0d9488; }
 
 @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }

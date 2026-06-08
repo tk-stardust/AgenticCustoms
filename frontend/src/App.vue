@@ -110,15 +110,9 @@ const breadcrumbs: Record<string, string> = {
 :deep(.el-menu-item .el-icon) { color: #64748b; transition: color 0.2s; }
 :deep(.el-menu-item:hover) { color: #e2e8f0; background: rgba(255,255,255,.04); }
 :deep(.el-menu-item:hover .el-icon) { color: #94a3b8; }
-:deep(.el-menu-item.is-active) { color: #f8fafc; background: rgba(13,148,136,.08); }
-:deep(.el-menu-item.is-active .el-icon) { color: #0d9488; }
-:deep(.el-menu-item.is-active::before) {
-  content: ''; position: absolute; left: 0; top: 50%;
-  width: 3px; height: 0; border-radius: 0 2px 2px 0;
-  background: #0d9488;
-  animation: barIn 0.25s ease forwards;
-}
-@keyframes barIn { to { top: 20%; height: 60%; } }
+:deep(.el-menu-item.is-active) { color: #fff; background: var(--color-brand-600); border-radius: 8px; }
+:deep(.el-menu-item.is-active .el-icon) { color: #fff; }
+:deep(.el-menu-item.is-active::before) { display: none; }
 :deep(.el-menu-item:not(.is-active):hover::after) {
   content: ''; position: absolute; left: 0; top: 30%;
   width: 2px; height: 40%; border-radius: 0 2px 2px 0; background: rgba(148,163,184,.3);
@@ -136,7 +130,11 @@ const breadcrumbs: Record<string, string> = {
 /* 顶部栏 */
 .topbar {
   height: 56px; display: flex; align-items: center; justify-content: space-between;
-  padding: 0 24px; background: #fff; border-bottom: 1px solid #e2e8f0;
+  padding: 0 24px;
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(226,232,240,0.6);
   flex-shrink: 0; z-index: 10;
 }
 .breadcrumb { font-size: 14px; color: #94a3b8; }

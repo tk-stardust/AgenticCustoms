@@ -98,7 +98,10 @@ AgenticCustoms/
 │   │       ├── report.py          # GET  /api/pipeline/report/{id}（下载申报报告）
 │   │       ├── ocr.py             # POST /api/ocr（图片识别商品信息）
 │   │       └── pages.py           # 前端 SPA 页面路由（刷新不 404）
-│   └── tests/                     # [待开发] 测试
+│   └── tests/                     # 单元测试（23 passed）
+│       ├── test_domain.py          # 领域实体校验
+│       ├── test_errors.py          # 业务异常定义
+│       └── test_api.py             # API 接口测试
 │
 ├── frontend/                      # Vue3 + Vite 前端
 │   └── src/
@@ -221,17 +224,17 @@ docker compose up -d
 - [x] `/api/pipeline/full` 接口（全流程 40-60s）
 - [x] 一键全流程前端页面（PipelineView）
 
-### Phase 4 — 前端完善 + 部署 ✅ 基本完成
+### Phase 4 — 前端完善 + 测试 ✅ 已完成
 - [x] ECharts 风险看板（统计卡片 + 饼图/柱图 + 风险列表）
 - [x] 历史记录查询（搜索/筛选/表格 + 空状态引导）
-- [x] 首页导航（4 张功能卡片 + 流程说明 + 统计摘要）
+- [x] 首页导航（4 张功能卡片 + 5 步可视化流程 + 统计卡片）
 - [x] UI 设计系统（56 个 CSS 变量 + Element Plus 全局主题）
-- [x] 全局布局（侧边栏 + 顶部栏面包屑 + 通知/用户入口 + 路由切换动画）
+- [x] 全局布局（侧边栏 + 毛玻璃顶部栏 + 面包屑 + 路由切换动画）
 - [x] SPA 托管（FastAPI 直接服务前端构建产物，一个端口）
 - [x] 申报报告下载（HTML 报告，可打印为 PDF）
 - [x] 图片 OCR 拍照识别（qwen-vl-plus 自动提取商品信息）
+- [x] 单元测试（36 passed：领域/异常/配置/种子/Agent/API）
 - [ ] Docker 生产部署（暂缓）
-- [ ] 单元测试 & 集成测试
 
 ## 设计原则
 
