@@ -1,20 +1,20 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { PieChart, BarChart } from 'echarts/charts'
-import { TitleComponent, TooltipComponent, LegendComponent } from 'echarts/components'
+import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { fetchHistory, type HistoryRecord } from '@/api/history'
 
-use([PieChart, BarChart, TitleComponent, TooltipComponent, LegendComponent, CanvasRenderer])
+use([PieChart, BarChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer])
 
 const router = useRouter()
 const records = ref<HistoryRecord[]>([])
 const loading = ref(false)
 
-onMounted(async () => {
+onActivated(async () => {
   loading.value = true
   try { records.value = await fetchHistory(50) }
   finally { loading.value = false }
@@ -23,7 +23,7 @@ onMounted(async () => {
 const stats = computed(() => ({
   total: records.value.length || 127,
   passRate: 96.8,
-  warnings: records.value.filter(r => r.status === 'completed').length || 2,
+  warnings: records.value.filter(r => r.results && !(r.results as any).cross_check_passed).length,
   avgTime: records.value.length ? '42s' : '—',
 }))
 
@@ -97,7 +97,7 @@ const riskMap: Record<string,{label:string;type:'success'|'warning'|'danger'}> =
           <div class="stat-value">{{ stats.passRate }}%</div>
           <div class="progress-bar-sm"><div class="progress-fill-sm" style="width:96.8%"></div></div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" style="cursor:pointer" @click="router.push('/history?filter=risk')">
           <div class="stat-label">风险预警</div>
           <div class="stat-value">{{ stats.warnings }}</div>
           <el-tag type="danger" size="small" effect="dark">待处理</el-tag>

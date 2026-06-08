@@ -24,7 +24,9 @@ export const usePipelineStore = defineStore('pipeline', () => {
   const documents = ref<DeclarationDoc | null>(null)
   const currentStep = ref<PipelineStep>('input')
   const loading = ref(false)
+  const classifyLoading = ref(false)
   const errors = ref<StepError[]>([])
+  const autoRun = ref(false)
 
   const hasErrors = computed(() => errors.value.length > 0)
   const isComplete = computed(() => currentStep.value === 'done')
@@ -32,7 +34,7 @@ export const usePipelineStore = defineStore('pipeline', () => {
   async function runClassify(input: Commodity) {
     commodity.value = input
     currentStep.value = 'classifying'
-    loading.value = true
+    classifyLoading.value = true
     errors.value = []
     try {
       hsResult.value = await classifyCommodity(input)
@@ -40,7 +42,7 @@ export const usePipelineStore = defineStore('pipeline', () => {
     } catch (e: unknown) {
       errors.value.push({ step: 'classify', message: (e as Error).message })
     } finally {
-      loading.value = false
+      classifyLoading.value = false
     }
   }
 
@@ -86,11 +88,13 @@ export const usePipelineStore = defineStore('pipeline', () => {
     documents,
     currentStep,
     loading,
+    classifyLoading,
     errors,
     hasErrors,
     isComplete,
     runClassify,
     runPipeline,
     reset,
+    autoRun,
   }
 })

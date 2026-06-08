@@ -6,7 +6,7 @@ class HsCodeResult(BaseModel):
 
     code: str = Field(
         ...,
-        pattern=r"^\d{6}(\.\d{2,4})?$",
+        pattern=r"^\d{6}(\.?\d{2,4})?$",  # 8518.22 / 851822 / 85182200 均合法
         description="HS编码(至少6位国际通用码)",
     )
     description: str = Field(..., description="品目描述")

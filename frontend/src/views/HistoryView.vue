@@ -1,27 +1,70 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onActivated } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { Search, Download } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { usePipelineStore } from '@/stores/pipeline'
+import client from '@/api/client'
 import { fetchHistory, type HistoryRecord } from '@/api/history'
 
 const router = useRouter()
+const route = useRoute()
+const pipelineStore = usePipelineStore()
 const allRecords = ref<HistoryRecord[]>([])
+
+const reportVisible = ref(false)
+const reportHtml = ref('')
+
+async function viewReport(row: HistoryRecord) {
+  if (!row.request_id) return
+  const { data } = await client.get(`/pipeline/report/${row.request_id}`)
+  reportHtml.value = data as string
+  reportVisible.value = true
+}
+function downloadReport() {
+  const blob = new Blob([reportHtml.value], { type: 'text/html' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = 'agentic_customs_report.html'; a.click()
+  URL.revokeObjectURL(url)
+}
+async function deleteRecord(row: HistoryRecord) {
+  try { await ElMessageBox.confirm(`确定删除「${row.commodity_name}」的申报记录？`, '确认删除', { type:'warning' }) }
+  catch { return }
+  await client.delete(`/history/${row.id}`)
+  ElMessage.success('已删除')
+  load()
+}
+function rerun(row: HistoryRecord) {
+  pipelineStore.commodity = {
+    name: row.commodity_name || '',
+    description: row.commodity_description || '',
+    material: '',
+    function: '',
+    usage: '',
+  }
+  pipelineStore.targetCountry = row.target_country || 'US'
+  pipelineStore.autoRun = true
+  router.push('/pipeline')
+}
 const loading = ref(false)
 const search = ref('')
 const filter = ref<'all'|'completed'|'pending'|'risk'>('all')
 
 async function load() {
+  if (route.query.filter === 'risk') filter.value = 'risk'
   loading.value = true
   try { const data = await fetchHistory(50); allRecords.value = data }
   finally { loading.value = false }
 }
 
-onMounted(load)
+onActivated(load)
 
 const filtered = computed(() => {
   let list = allRecords.value
   if (filter.value === 'completed') list = list.filter(r => r.status === 'completed')
   else if (filter.value === 'pending') list = list.filter(r => r.status === 'pending')
+  else if (filter.value === 'risk') list = list.filter(r => r.results && !(r.results as any).cross_check_passed)
   if (search.value) {
     const q = search.value.toLowerCase()
     list = list.filter(r => r.commodity_name?.toLowerCase().includes(q) || r.hs_code?.toLowerCase().includes(q))
@@ -87,15 +130,22 @@ function statusLabel(r: HistoryRecord) { return statusMap[r.status]?.label || r.
             </template>
           </el-table-column>
           <el-table-column label="操作" width="160">
-            <template #default>
-              <el-button link type="primary" size="small" @click="router.push('/pipeline')">查看详情</el-button>
-              <el-button link size="small" @click="load">重新运行</el-button>
-              <el-button link size="small" class="btn-delete">删除</el-button>
+            <template #default="{ row }">
+              <el-button link type="primary" size="small" @click="viewReport(row)">查看详情</el-button>
+              <el-button link size="small" @click="rerun(row)">重新运行</el-button>
+              <el-button link size="small" class="btn-delete" @click="deleteRecord(row)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
       </div>
     </template>
+    <el-dialog v-model="reportVisible" title="申报报告" width="800px" top="5vh">
+      <iframe :srcdoc="reportHtml" style="width:100%;height:65vh;border:none;border-radius:8px;background:#fff"></iframe>
+      <template #footer>
+        <el-button type="primary" @click="downloadReport">📥 下载</el-button>
+        <el-button @click="reportVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 

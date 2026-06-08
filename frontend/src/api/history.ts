@@ -4,6 +4,7 @@ export interface HistoryRecord {
   id: number
   request_id: string
   commodity_name: string
+  commodity_description?: string
   hs_code: string
   target_country: string
   status: string

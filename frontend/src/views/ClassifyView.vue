@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { ElMessage } from 'element-plus'
 import { usePipelineStore } from '@/stores/pipeline'
 import type { Commodity } from '@/types'
 import { Search, MagicStick, CopyDocument, Check, Camera } from '@element-plus/icons-vue'
@@ -36,6 +37,8 @@ async function onUpload(e: Event) {
 const collActive = ref<string[]>(['reasoning'])
 
 async function onSubmit() {
+  if (!form.value.name.trim()) { ElMessage.warning('请输入商品名称'); return }
+  if (!form.value.description.trim()) { ElMessage.warning('请输入商品描述'); return }
   loadingStep.value=0
   stepTimer = setInterval(()=>{ if(loadingStep.value<3) loadingStep.value++ },5000)
   await store.runClassify({...form.value})
@@ -91,12 +94,12 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
             <el-col :span="8"><el-form-item label="用途"><el-input v-model="form.usage" placeholder="家庭娱乐" clearable/></el-form-item></el-col>
           </el-row>
           <div class="btn-group">
-            <button class="btn-primary" :class="{loading:store.loading}" :disabled="store.loading" @click="onSubmit">
-              <el-icon v-if="!store.loading" :size="18" style="margin-right:6px"><Search/></el-icon>
-              <span v-if="store.loading" class="spinner"></span>
-              {{ store.loading?'AI 推理中...':'开始归类' }}
+            <button type="button" class="btn-primary" :class="{loading:store.classifyLoading}" :disabled="store.classifyLoading" @click="onSubmit">
+              <el-icon v-if="!store.classifyLoading" :size="18" style="margin-right:6px"><Search/></el-icon>
+              <span v-if="store.classifyLoading" class="spinner"></span>
+              {{ store.classifyLoading?'AI 推理中...':'开始归类' }}
             </button>
-            <button class="btn-ghost" @click="store.reset()" :disabled="store.loading">清空</button>
+            <button class="btn-ghost" @click="store.reset()" :disabled="store.classifyLoading">清空</button>
           </div>
         </el-form>
       </div>
@@ -104,7 +107,7 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
       <!-- 右侧结果 -->
       <div class="panel panel-result" :class="{'has-result':store.hsResult}">
         <!-- 空状态 -->
-        <div v-if="!store.hsResult && !store.loading" class="empty-state">
+        <div v-if="!store.hsResult && !store.classifyLoading" class="empty-state">
           <div class="empty-illustration"><div class="robot-icon"><span class="robot-eye">◎</span></div></div>
           <h2>AI 智能归类引擎就绪</h2>
           <p class="empty-sub">输入商品信息后，AI 将自动完成：</p>
@@ -119,7 +122,7 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
         </div>
 
         <!-- 加载 -->
-        <div v-if="store.loading" class="loading-state">
+        <div v-if="store.classifyLoading" class="loading-state">
           <h3>正在归类...</h3>
           <div class="loading-steps">
             <div v-for="(log,i) in loadingLogs" :key="i" class="loading-step" :class="{active:i===loadingStep,done:i<loadingStep}">

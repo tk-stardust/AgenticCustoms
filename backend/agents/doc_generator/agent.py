@@ -14,6 +14,12 @@ from shared.logger import get_logger
 
 logger = get_logger(__name__)
 
+
+def _normalize_hs(code: str) -> str:
+    """归一化 HS 编码——去点后取前6位国际通用码，消除 8518.22 / 85182200 / 851822 格式差异"""
+    return code.replace(".", "").strip()[:6]
+
+
 DOC_PROMPT = """你是一名外贸报关专员。根据归类、关税、合规、原产地分析结果，生成一套完整的申报文件，并做交叉校验。
 
 ## 商品信息
@@ -132,15 +138,15 @@ class DocGeneratorAgent(BaseAgent[DeclarationDoc]):
         """验证申报文件与各分析结果的一致性"""
         errors = list(doc.cross_check_errors or [])
 
-        # HS 编码一致性
+        # HS 编码一致性——归一化后比较前6位，兼容 851822 / 8518.22 / 85182200 等格式
         decl_hs = doc.customs_declaration.get("hs_code", "")
-        if decl_hs and decl_hs != hs.code:
+        if decl_hs and _normalize_hs(str(decl_hs)) != _normalize_hs(hs.code):
             errors.append(f"报关单HS编码 {decl_hs} 与归类结果 {hs.code} 不一致")
 
         # 原产地证书 HS 一致性
         if doc.origin_certificate:
             cert_hs = doc.origin_certificate.get("hs_code", "")
-            if cert_hs and cert_hs != hs.code:
+            if cert_hs and _normalize_hs(str(cert_hs)) != _normalize_hs(hs.code):
                 errors.append(f"原产地证书HS编码 {cert_hs} 与归类结果 {hs.code} 不一致")
 
         # 税率一致性

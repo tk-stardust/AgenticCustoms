@@ -1,7 +1,7 @@
 """申报历史记录接口"""
 
-from fastapi import APIRouter
-from sqlalchemy import select, desc
+from fastapi import APIRouter, HTTPException
+from sqlalchemy import select, desc, delete
 
 from data.db.database import async_session
 from data.db.models import Declaration
@@ -30,6 +30,7 @@ async def list_history(limit: int = 20):
                 "id": r.id,
                 "request_id": r.request_id,
                 "commodity_name": r.commodity_name,
+                "commodity_description": r.commodity_description,
                 "hs_code": r.hs_code,
                 "target_country": r.target_country,
                 "status": r.status,
@@ -38,3 +39,18 @@ async def list_history(limit: int = 20):
             }
             for r in rows
         ]
+
+
+@router.delete("/history/{record_id}")
+async def delete_record(record_id: int):
+    """删除指定申报记录"""
+    async with async_session() as session:
+        result = await session.execute(
+            select(Declaration).where(Declaration.id == record_id)
+        )
+        record = result.scalar_one_or_none()
+        if not record:
+            raise HTTPException(404, "记录不存在")
+        await session.delete(record)
+        await session.commit()
+    return {"ok": True}

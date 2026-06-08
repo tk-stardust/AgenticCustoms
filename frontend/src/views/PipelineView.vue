@@ -1,12 +1,26 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onActivated } from 'vue'
+import { ElMessage } from 'element-plus'
 import { usePipelineStore } from '@/stores/pipeline'
 import type { Commodity } from '@/types'
 import { Check, Loading } from '@element-plus/icons-vue'
 
 const store = usePipelineStore()
 const form = ref<Commodity>({ name: '', description: '', material: '', function: '', usage: '' })
-const country = ref('US')
+const country = ref(store.targetCountry)
+onActivated(() => {
+  if (!store.autoRun) return
+  store.autoRun = false
+  if (store.commodity?.name) {
+    form.value = { name: store.commodity.name, description: store.commodity.description || '', material: '', function: '', usage: '' }
+    materialTags.value = []
+    country.value = store.targetCountry
+    if (store.autoRun) {
+      store.autoRun = false
+      setTimeout(() => onSubmit(), 500)  // 等组件渲染完再提交
+    }
+  }
+})
 const phase = ref<'idle' | 'running' | 'done'>('idle')
 const activePhase = ref(-1)
 const agentPhase = ref(-1)
@@ -59,12 +73,13 @@ function removeTag(idx: number) {
 }
 
 async function onSubmit() {
-  phase.value = 'running'; activePhase.value = 0; agentPhase.value = -1
+  if (!form.value.name.trim()) { ElMessage.warning('请输入商品名称'); return }
+  if (!form.value.description.trim()) { ElMessage.warning('请输入商品描述'); return }
+  phase.value = 'running'; activePhase.value = 0; agentPhase.value = 0
   const timer = setInterval(() => {
     if (agentPhase.value < agents.length - 1) {
       agentPhase.value++
-    } else if (activePhase.value < steps.length - 1) {
-      activePhase.value++
+      activePhase.value = agentPhase.value
     }
   }, 8000)
   await store.runPipeline({ ...form.value }, country.value)
@@ -155,7 +170,7 @@ const showReport = computed(() => phase.value === 'done' && store.documents)
             </el-col>
           </el-row>
 
-          <button class="btn-start" :class="{ running: phase === 'running' }" :disabled="phase === 'running'" @click="onSubmit">
+          <button type="button" class="btn-start" :class="{ running: phase === 'running' }" :disabled="phase === 'running'" @click="onSubmit">
             <span v-if="phase !== 'running'">⚡ 开始全流程分析</span>
             <span v-else class="agent-progress">
               <span class="mini-spinner"></span>
