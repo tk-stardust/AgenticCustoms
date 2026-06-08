@@ -85,6 +85,7 @@ export interface DeclarationDoc {
   compliance_statement: string
   cross_check_passed: boolean
   cross_check_errors: string[]
+  request_id?: string
 }
 
 // ---- 流水线 ----

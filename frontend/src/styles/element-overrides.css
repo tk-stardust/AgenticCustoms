@@ -1,0 +1,75 @@
+/* ===== Element Plus 主题覆写 v2 ===== */
+
+:root {
+  --el-color-primary:       var(--color-brand-600);
+  --el-color-primary-light-3: var(--color-brand-500);
+  --el-color-primary-light-5: var(--color-brand-100);
+  --el-color-primary-light-9: var(--color-brand-50);
+  --el-color-success:       var(--color-success);
+  --el-color-warning:       var(--color-warning);
+  --el-color-danger:        var(--color-danger);
+  --el-border-radius-base:  var(--radius-md);
+  --el-border-radius-round: var(--radius-pill);
+  --el-font-family:         var(--font-sans);
+  --el-box-shadow-light:    var(--shadow-card);
+  --el-bg-color-page:       var(--color-gray-50);
+  --el-fill-color-blank:    var(--color-white);
+}
+
+/* ---- 按钮 ---- */
+.el-button {
+  font-weight: 500;
+  letter-spacing: .01em;
+  transition: all var(--transition-smooth);
+}
+.el-button--primary {
+  background: linear-gradient(135deg, var(--color-brand-600), var(--color-brand-700));
+  border: none;
+}
+.el-button--primary:hover {
+  background: linear-gradient(135deg, var(--color-brand-500), var(--color-brand-600));
+}
+
+/* ---- 卡片 ---- */
+.el-card {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--color-gray-200);
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow var(--transition-smooth);
+}
+
+/* ---- 输入框 ---- */
+.el-input__wrapper,
+.el-textarea__inner {
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+.el-input.is-focus .el-input__wrapper {
+  box-shadow: 0 0 0 1px var(--color-brand-500) !important;
+}
+
+/* ---- 表格 ---- */
+.el-table { border-radius: var(--radius-card); font-size: var(--font-size-sm); }
+.el-table th.el-table__cell {
+  background: var(--color-gray-50);
+  color: var(--color-gray-500);
+  font-weight: 600;
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+/* ---- 标签 ---- */
+.el-tag {
+  border-radius: var(--radius-pill);
+  font-weight: 500;
+  font-size: var(--font-size-xs);
+}
+
+/* ---- 菜单（样式已移至 App.vue scoped 中） ---- */
+.el-menu { border-right: none !important; }
+
+/* ---- 步骤条 ---- */
+.el-steps { padding: var(--space-4) 0; }
+.el-step__title { font-size: var(--font-size-sm); font-weight: 500; }
+.el-step__description { font-size: var(--font-size-xs); color: var(--color-gray-400); }

@@ -90,24 +90,32 @@ AgenticCustoms/
 │   │   └── graph.py               # classify → 并行 → document 拓扑
 │   │
 │   ├── api/                       # API 路由
-│   │   ├── deps.py                # 依赖注入
+│   │   ├── deps.py                # 依赖注入（Agent 单例工厂）
 │   │   └── routes/
 │   │       ├── classify.py        # POST /api/classify
-│   │       ├── pipeline.py        # POST /api/pipeline/full
-│   │       └── pages.py           # 前端页面路由（SPA 刷新不 404）
+│   │       ├── pipeline.py        # POST /api/pipeline/full（含自动存档）
+│   │       ├── history.py         # GET  /api/history
+│   │       ├── report.py          # GET  /api/pipeline/report/{id}（下载申报报告）
+│   │       ├── ocr.py             # POST /api/ocr（图片识别商品信息）
+│   │       └── pages.py           # 前端 SPA 页面路由（刷新不 404）
 │   └── tests/                     # [待开发] 测试
 │
 ├── frontend/                      # Vue3 + Vite 前端
 │   └── src/
 │       ├── views/
-│       │   ├── ClassifyView.vue   # HS归类页（表单 + 结果展示）
-│       │   ├── PipelineView.vue   # 一键全流程页
-│       │   ├── DashboardView.vue  # [待开发] 风险看板
-│       │   └── HistoryView.vue    # [待开发] 历史记录
+│       │   ├── HomeView.vue       # 首页——功能卡片导航 + 统计摘要
+│       │   ├── ClassifyView.vue   # HS归类页（双栏：表单+OCR拍照识别+结果展示）
+│       │   ├── PipelineView.vue   # 一键全流程（5Agent卡片+流程步骤条+报告下载）
+│       │   ├── DashboardView.vue  # 风险看板（统计卡片+ECharts饼/柱图+风险列表）
+│       │   └── HistoryView.vue    # 历史记录（搜索/筛选/表格+空状态引导）
+│       ├── styles/                # UI 设计系统
+│       │   ├── design-tokens.css  # 56 个 CSS 变量（配色/排版/圆角/阴影）
+│       │   ├── global.css         # 全局重置 + 工具类
+│       │   └── element-overrides.css  # Element Plus 主题覆写
 │       ├── stores/pipeline.ts     # Pinia 流水线状态
-│       ├── api/                   # Axios API 调用
-│       ├── types/                 # TypeScript 类型定义
-│       └── router/                # Vue Router
+│       ├── api/                   # Axios API 调用层（classify/pipeline/history/ocr）
+│       ├── types/                 # TypeScript 类型（与后端 Pydantic 对齐）
+│       └── router/                # Vue Router 4
 │
 ├── .env.example                   # 环境变量模板
 ├── docker-compose.yml             # MySQL + Backend
@@ -129,11 +137,23 @@ AgenticCustoms/
 | 前端 | Vue3 + Element Plus + ECharts |
 | 部署 | Docker + Nginx |
 
+## API 接口一览
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/health` | 健康检查 |
+| `POST` | `/api/classify` | HS 编码归类（~17s） |
+| `POST` | `/api/pipeline/full?target_country=US` | 一键全流程（~60s） |
+| `POST` | `/api/ocr` | 图片 OCR 识别商品信息 |
+| `GET` | `/api/history?limit=20` | 申报历史记录 |
+| `GET` | `/api/pipeline/report/{request_id}` | 下载申报报告 HTML |
+| `GET` | `/docs` | Swagger API 文档 |
+
 ## 快速开始
 
 ### 环境要求
 
-- Python >= 3.11
+- Python >= 3.11（已实测 3.12、3.13）
 - MySQL 8.0（本机或 Docker）
 - DashScope API Key（通义千问 Qwen-Plus）
 
@@ -201,11 +221,16 @@ docker compose up -d
 - [x] `/api/pipeline/full` 接口（全流程 40-60s）
 - [x] 一键全流程前端页面（PipelineView）
 
-### Phase 4 — 前端完善 + 部署
-- [ ] ECharts 风险看板（DashboardView）
-- [ ] 历史记录查询（HistoryView）
-- [ ] 申报文件 PDF 下载
-- [ ] Docker 生产部署
+### Phase 4 — 前端完善 + 部署 ✅ 基本完成
+- [x] ECharts 风险看板（统计卡片 + 饼图/柱图 + 风险列表）
+- [x] 历史记录查询（搜索/筛选/表格 + 空状态引导）
+- [x] 首页导航（4 张功能卡片 + 流程说明 + 统计摘要）
+- [x] UI 设计系统（56 个 CSS 变量 + Element Plus 全局主题）
+- [x] 全局布局（侧边栏 + 顶部栏面包屑 + 通知/用户入口 + 路由切换动画）
+- [x] SPA 托管（FastAPI 直接服务前端构建产物，一个端口）
+- [x] 申报报告下载（HTML 报告，可打印为 PDF）
+- [x] 图片 OCR 拍照识别（qwen-vl-plus 自动提取商品信息）
+- [ ] Docker 生产部署（暂缓）
 - [ ] 单元测试 & 集成测试
 
 ## 设计原则

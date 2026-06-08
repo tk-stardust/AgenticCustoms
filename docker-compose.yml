@@ -24,6 +24,7 @@ services:
       - "8000:8000"
     environment:
       APP_ENV: dev
+      APP_HOST: 0.0.0.0
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
       MYSQL_USER: ${MYSQL_USER:-agentic}

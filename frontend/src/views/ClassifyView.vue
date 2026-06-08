@@ -2,12 +2,35 @@
 import { ref, computed } from 'vue'
 import { usePipelineStore } from '@/stores/pipeline'
 import type { Commodity } from '@/types'
-import { Search, MagicStick, CopyDocument, Check } from '@element-plus/icons-vue'
+import { Search, MagicStick, CopyDocument, Check, Picture } from '@element-plus/icons-vue'
+import { ocrImage } from '@/api/ocr'
 
 const store = usePipelineStore()
 const form = ref<Commodity>({ name:'',description:'',material:'',function:'',usage:'' })
 const loadingStep = ref(0)
+const ocrLoading = ref(false)
 let stepTimer: ReturnType<typeof setInterval> | null = null
+
+async function onUpload(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  ocrLoading.value = true
+  try {
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve((reader.result as string).split(',')[1])
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+    const result = await ocrImage(base64, file.type)
+    form.value.name = result.name || form.value.name
+    form.value.description = result.description || form.value.description
+    form.value.material = result.material || form.value.material
+    form.value.function = result.function || form.value.function
+    form.value.usage = result.usage || form.value.usage
+  } catch { /* ignored */ }
+  finally { ocrLoading.value = false }
+}
 const collActive = ref<string[]>(['reasoning'])
 
 async function onSubmit() {
@@ -35,7 +58,13 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
       <!-- 左侧表单 -->
       <div class="panel panel-form">
         <div class="panel-top-bar"></div>
-        <h3 class="panel-title">商品信息</h3>
+        <h3 class="panel-title">商品信息
+          <label class="upload-btn" :class="{loading:ocrLoading}">
+            <el-icon :size="16"><Picture/></el-icon>
+            {{ ocrLoading ? '识别中...' : '拍照识别' }}
+            <input type="file" accept="image/*" hidden @change="onUpload"/>
+          </label>
+        </h3>
         <el-form :model="form" label-position="top">
           <div class="field-group">
             <label class="field-label"><span class="required-dot"></span>商品名称</label>
@@ -152,7 +181,10 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
 .panel-form{position:relative;padding:24px}
 .panel-result{min-height:400px;padding:24px}
 .panel-top-bar{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#0d9488,#14b8a6)}
-.panel-title{font-size:16px;font-weight:600;margin-bottom:20px}
+.panel-title{font-size:16px;font-weight:600;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center}
+.upload-btn{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:500;color:#0d9488;cursor:pointer;padding:4px 12px;border:1px solid #0d9488;border-radius:8px;transition:all .2s}
+.upload-btn:hover{background:rgba(13,148,136,.06)}
+.upload-btn.loading{opacity:.6;pointer-events:none}
 
 .field-group{margin-bottom:16px}
 .field-label{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:500;color:#1e293b;margin-bottom:8px}

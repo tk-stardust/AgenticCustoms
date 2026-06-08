@@ -1,0 +1,45 @@
+"""前端页面路由——每个 Vue Router 路径对应一个路由，刷新时不 404"""
+
+import os
+
+from fastapi import APIRouter
+from fastapi.responses import FileResponse
+
+router = APIRouter(tags=["pages"])
+
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "frontend", "dist")
+
+
+def _index() -> FileResponse:
+    """返回 Vue SPA 入口 HTML"""
+    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+
+
+@router.get("/")
+async def home():
+    """首页——HS 编码归类"""
+    return _index()
+
+
+@router.get("/classify")
+async def classify_page():
+    """HS 编码归类"""
+    return _index()
+
+
+@router.get("/pipeline")
+async def pipeline_page():
+    """一键全流程"""
+    return _index()
+
+
+@router.get("/dashboard")
+async def dashboard_page():
+    """风险看板"""
+    return _index()
+
+
+@router.get("/history")
+async def history_page():
+    """历史记录"""
+    return _index()

@@ -47,9 +47,13 @@ app.add_middleware(
 from api.routes.classify import router as classify_router
 from api.routes.pipeline import router as pipeline_router
 from api.routes.history import router as history_router
+from api.routes.report import router as report_router
+from api.routes.ocr import router as ocr_router
 app.include_router(classify_router)
 app.include_router(pipeline_router)
 app.include_router(history_router)
+app.include_router(report_router)
+app.include_router(ocr_router)
 
 # 前端页面路由（每个 Vue Router 路径对应一个路由，刷新不 404）
 from api.routes.pages import router as pages_router

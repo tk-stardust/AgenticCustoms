@@ -19,3 +19,4 @@ class DeclarationDoc(BaseModel):
     cross_check_errors: list[str] = Field(
         default_factory=list, description="交叉校验发现的矛盾项"
     )
+    request_id: str = Field(default="", description="申报请求ID，用于下载报告")

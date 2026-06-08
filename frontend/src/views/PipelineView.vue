@@ -81,6 +81,10 @@ function agentState(i: number) {
   return 'pending'
 }
 
+function downloadReport() {
+  const rid = store.documents?.request_id
+  if (rid) window.open(`/api/pipeline/report/${rid}`, '_blank')
+}
 const showReport = computed(() => phase.value === 'done' && store.documents)
 </script>
 
@@ -246,7 +250,7 @@ const showReport = computed(() => phase.value === 'done' && store.documents)
           </div>
 
           <div class="report-actions">
-            <button class="btn-primary">📥 下载申报文件</button>
+            <button class="btn-primary" @click="downloadReport">📥 下载申报文件</button>
             <button class="btn-ghost" @click="phase='idle'; store.reset()">重新分析</button>
           </div>
         </template>
