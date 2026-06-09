@@ -11,6 +11,9 @@ const router = useRouter()
 const route = useRoute()
 const pipelineStore = usePipelineStore()
 const allRecords = ref<HistoryRecord[]>([])
+const total = ref(0)
+const page = ref(1)
+const pageSize = ref(20)
 
 const reportVisible = ref(false)
 const reportHtml = ref('')
@@ -54,8 +57,22 @@ const filter = ref<'all'|'completed'|'pending'|'risk'>('all')
 async function load() {
   if (route.query.filter === 'risk') filter.value = 'risk'
   loading.value = true
-  try { const data = await fetchHistory(50); allRecords.value = data }
+  try {
+    const data = await fetchHistory(page.value, pageSize.value)
+    allRecords.value = data.items
+    total.value = data.total
+  }
   finally { loading.value = false }
+}
+
+function onPageChange(p: number) {
+  page.value = p
+  load()
+}
+function onPageSizeChange(s: number) {
+  pageSize.value = s
+  page.value = 1
+  load()
 }
 
 onMounted(load)
@@ -137,6 +154,17 @@ function statusLabel(r: HistoryRecord) { return statusMap[r.status]?.label || r.
             </template>
           </el-table-column>
         </el-table>
+        <div class="pagination-wrap" v-if="total > pageSize">
+          <el-pagination
+            v-model:current-page="page"
+            v-model:page-size="pageSize"
+            :total="total"
+            :page-sizes="[10, 20, 50]"
+            layout="total, sizes, prev, pager, next"
+            @current-change="onPageChange"
+            @size-change="onPageSizeChange"
+          />
+        </div>
       </div>
     </template>
     <el-dialog v-model="reportVisible" title="申报报告" width="800px" top="5vh">

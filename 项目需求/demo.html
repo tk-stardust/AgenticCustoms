@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>一键全流程 - AgenticCustoms Demo</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #f8fafc;
+            color: #1e293b;
+        }
+
+        /* 布局 */
+        .container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* 侧边栏 */
+        .sidebar {
+            width: 220px;
+            background: #0f172a;
+            padding: 16px 0;
+        }
+        .logo {
+            padding: 0 20px 20px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .logo-icon {
+            width: 28px;
+            height: 28px;
+            background: #0d9488;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        .nav-item {
+            padding: 12px 20px;
+            color: #94a3b8;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 0 8px;
+            border-radius: 8px;
+        }
+        .nav-item:hover {
+            background: rgba(255,255,255,0.05);
+            color: #e2e8f0;
+        }
+        .nav-item.active {
+            background: rgba(13,148,136,0.15);
+            color: #0d9488;
+            position: relative;
+        }
+        .nav-item.active::before {
+            content: '';
+            position: absolute;
+            left: -8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 20px;
+            background: #0d9488;
+            border-radius: 2px;
+        }
+
+        /* 主内容区 */
+        .main {
+            flex: 1;
+            padding: 24px 32px;
+        }
+
+        /* 面包屑 */
+        .breadcrumb {
+            color: #64748b;
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+        .breadcrumb span {
+            color: #0d9488;
+            font-weight: 500;
+        }
+
+        /* 标题区 */
+        .header {
+            margin-bottom: 24px;
+        }
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .header p {
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        /* 步骤条 */
+        .steps {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 32px;
+            padding: 0 20px;
+        }
+        .step {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+            position: relative;
+        }
+        .step:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            right: 20px;
+            top: 16px;
+            width: calc(100% - 60px);
+            height: 2px;
+            background: #e2e8f0;
+        }
+        .step.completed:not(:last-child)::after {
+            background: #0d9488;
+        }
+        .step-num {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+        .step.pending .step-num {
+            background: #f1f5f9;
+            color: #94a3b8;
+        }
+        .step.active .step-num {
+            background: #0d9488;
+            color: white;
+            box-shadow: 0 0 0 4px rgba(13,148,136,0.2);
+            animation: pulse 2s infinite;
+        }
+        .step.completed .step-num {
+            background: #0d9488;
+            color: white;
+        }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 4px rgba(13,148,136,0.2); }
+            50% { box-shadow: 0 0 0 8px rgba(13,148,136,0.1); }
+        }
+        .step-info h4 {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+        .step-info p {
+            font-size: 11px;
+            color: #94a3b8;
+        }
+        .step.active .step-info h4 {
+            color: #0d9488;
+        }
+
+        /* 两栏布局 */
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        /* 卡片 */
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #0d9488;
+            display: inline-block;
+        }
+
+        /* 表单 */
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 6px;
+        }
+        .form-label .required {
+            color: #0d9488;
+            margin-right: 4px;
+        }
+        .form-input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: #0d9488;
+            box-shadow: 0 0 0 3px rgba(13,148,136,0.08);
+        }
+        textarea.form-input {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        /* 标签输入 */
+        .tag-input {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 8px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            min-height: 44px;
+        }
+        .tag {
+            background: rgba(13,148,136,0.08);
+            color: #0d9488;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .tag .remove {
+            cursor: pointer;
+            opacity: 0.6;
+        }
+        .tag .remove:hover {
+            opacity: 1;
+        }
+
+        /* 三列 */
+        .three-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+        }
+
+        /* 按钮 */
+        .btn {
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #0d9488, #0f766e);
+            color: white;
+            width: 100%;
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(13,148,136,0.3);
+        }
+        .btn-secondary {
+            background: white;
+            color: #64748b;
+            border: 1px solid #e2e8f0;
+        }
+
+        /* Agent 卡片 */
+        .agent-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .agent-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            transition: all 0.3s;
+        }
+        .agent-card:hover {
+            border-color: #0d9488;
+            box-shadow: 0 0 0 3px rgba(13,148,136,0.08);
+        }
+        .agent-card.running {
+            border-color: #0d9488;
+            background: rgba(13,148,136,0.02);
+        }
+        .agent-card.completed {
+            border-color: #10b981;
+            background: rgba(16,185,129,0.02);
+        }
+        .agent-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        .agent-icon.blue { background: rgba(59,130,246,0.1); }
+        .agent-icon.yellow { background: rgba(245,158,11,0.1); }
+        .agent-icon.green { background: rgba(16,185,129,0.1); }
+        .agent-icon.purple { background: rgba(139,92,246,0.1); }
+        .agent-icon.gray { background: rgba(100,116,139,0.1); }
+
+        .agent-info {
+            flex: 1;
+        }
+        .agent-info h4 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .agent-info p {
+            font-size: 12px;
+            color: #64748b;
+        }
+        .agent-status {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status-waiting {
+            background: #f1f5f9;
+            color: #94a3b8;
+        }
+        .status-running {
+            background: rgba(13,148,136,0.08);
+            color: #0d9488;
+            animation: blink 1.5s infinite;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .status-completed {
+            background: rgba(16,185,129,0.08);
+            color: #10b981;
+        }
+
+        /* 进度条 */
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: #e2e8f0;
+            border-radius: 2px;
+            margin-top: 16px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #0d9488, #14b8a6);
+            border-radius: 2px;
+            transition: width 0.5s ease;
+        }
+
+        /* 结果面板 */
+        .result-panel {
+            display: none;
+        }
+        .result-panel.active {
+            display: block;
+            animation: slideUp 0.4s ease;
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .result-header h3 {
+            font-size: 18px;
+        }
+        .result-header .badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .badge-success {
+            background: rgba(16,185,129,0.08);
+            color: #10b981;
+        }
+
+        /* 税费表格 */
+        .tax-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+        }
+        .tax-table th {
+            text-align: left;
+            padding: 10px;
+            font-size: 12px;
+            color: #64748b;
+            font-weight: 500;
+            background: #f8fafc;
+        }
+        .tax-table td {
+            padding: 12px 10px;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 14px;
+        }
+        .tax-table tr:last-child td {
+            border-bottom: none;
+            background: rgba(13,148,136,0.04);
+            font-weight: 600;
+            font-size: 16px;
+            color: #0d9488;
+        }
+
+        /* 文件标签页 */
+        .file-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        .file-tab {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            background: #f1f5f9;
+            color: #64748b;
+        }
+        .file-tab.active {
+            background: #0d9488;
+            color: white;
+        }
+
+        /* A4纸张预览 */
+        .a4-preview {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            padding: 40px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            font-family: 'SimSun', '宋体', serif;
+            font-size: 12px;
+            line-height: 1.8;
+        }
+        .a4-preview h2 {
+            text-align: center;
+            font-size: 16px;
+            margin-bottom: 20px;
+            letter-spacing: 2px;
+        }
+        .form-row {
+            display: flex;
+            border-bottom: 1px solid #333;
+        }
+        .form-row:first-child {
+            border-top: 1px solid #333;
+        }
+        .form-cell {
+            flex: 1;
+            padding: 6px 8px;
+            border-right: 1px solid #333;
+            min-height: 32px;
+        }
+        .form-cell:last-child {
+            border-right: none;
+        }
+        .form-cell label {
+            display: block;
+            color: #666;
+            font-size: 11px;
+            margin-bottom: 2px;
+        }
+        .form-cell .value {
+            font-weight: bold;
+            font-size: 13px;
+        }
+
+        /* 底部操作 */
+        .actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 侧边栏 -->
+        <div class="sidebar">
+            <div class="logo">
+                <div class="logo-icon">🌐</div>
+                AgenticCustoms
+            </div>
+            <div class="nav-item">🏠 首页</div>
+            <div class="nav-item">🔍 HS 归类</div>
+            <div class="nav-item active">⚡ 一键全流程</div>
+            <div class="nav-item">🛡️ 风险看板</div>
+            <div class="nav-item">⏱️ 历史记录</div>
+        </div>
+
+        <!-- 主内容 -->
+        <div class="main">
+            <div class="breadcrumb">首页 / <span>一键全流程</span></div>
+
+            <div class="header">
+                <h1>一键全流程</h1>
+                <p>5 大 AI Agent 协作，生成完整申报文件包</p>
+            </div>
+
+            <!-- 步骤条 -->
+            <div class="steps">
+                <div class="step completed">
+                    <div class="step-num">✓</div>
+                    <div class="step-info">
+                        <h4>HS归类</h4>
+                        <p>编码推理</p>
+                    </div>
+                </div>
+                <div class="step completed">
+                    <div class="step-num">✓</div>
+                    <div class="step-info">
+                        <h4>关税计算</h4>
+                        <p>税费试算</p>
+                    </div>
+                </div>
+                <div class="step completed">
+                    <div class="step-num">✓</div>
+                    <div class="step-info">
+                        <h4>合规校验</h4>
+                        <p>风险检查</p>
+                    </div>
+                </div>
+                <div class="step completed">
+                    <div class="step-num">✓</div>
+                    <div class="step-info">
+                        <h4>原产地</h4>
+                        <p>FTA匹配</p>
+                    </div>
+                </div>
+                <div class="step active">
+                    <div class="step-num">5</div>
+                    <div class="step-info">
+                        <h4>文件生成</h4>
+                        <p>申报草单</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content">
+                <!-- 左侧表单 -->
+                <div class="card">
+                    <div class="card-title">商品信息</div>
+
+                    <div class="form-group">
+                        <label class="form-label"><span class="required">●</span>商品名称</label>
+                        <input type="text" class="form-input" value="木质餐桌套装" readonly>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label"><span class="required">●</span>商品描述</label>
+                        <textarea class="form-input" readonly>橡胶木餐桌配4把椅子，桌面尺寸120x80cm，表面清漆处理，用于家庭餐厅</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">材质</label>
+                        <div class="tag-input">
+                            <span class="tag">橡胶木<span class="remove">×</span></span>
+                        </div>
+                    </div>
+
+                    <div class="three-col">
+                        <div class="form-group">
+                            <label class="form-label">功能</label>
+                            <input type="text" class="form-input" value="用餐" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">用途</label>
+                            <input type="text" class="form-input" value="家庭餐厅" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">目标国</label>
+                            <input type="text" class="form-input" value="🇺🇸 美国" readonly>
+                        </div>
+                    </div>
+
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 100%"></div>
+                    </div>
+                    <p style="text-align:center; margin-top:8px; color:#64748b; font-size:13px;">Agent 5/5 运行中...</p>
+                </div>
+
+                <!-- 右侧结果 -->
+                <div class="card">
+                    <!-- 运行中状态（默认显示） -->
+                    <div id="runningPanel">
+                        <div class="agent-list">
+                            <div class="agent-card completed">
+                                <div class="agent-icon blue">🔍</div>
+                                <div class="agent-info">
+                                    <h4>编码推理 Agent</h4>
+                                    <p>正在解析商品材质与功能特征...</p>
+                                </div>
+                                <span class="agent-status status-completed">✓ 已完成</span>
+                            </div>
+
+                            <div class="agent-card completed">
+                                <div class="agent-icon yellow">💰</div>
+                                <div class="agent-info">
+                                    <h4>关税计算 Agent</h4>
+                                    <p>检索第 84-85 章税则品目...</p>
+                                </div>
+                                <span class="agent-status status-completed">✓ 已完成</span>
+                            </div>
+
+                            <div class="agent-card completed">
+                                <div class="agent-icon green">🛡️</div>
+                                <div class="agent-info">
+                                    <h4>合规校验 Agent</h4>
+                                    <p>匹配 OFAC/商务部制裁清单...</p>
+                                </div>
+                                <span class="agent-status status-completed">✓ 已完成</span>
+                            </div>
+
+                            <div class="agent-card completed">
+                                <div class="agent-icon purple">📍</div>
+                                <div class="agent-info">
+                                    <h4>原产地 Agent</h4>
+                                    <p>比对 RCEP 原产地规则...</p>
+                                </div>
+                                <span class="agent-status status-completed">✓ 已完成</span>
+                            </div>
+
+                            <div class="agent-card running">
+                                <div class="agent-icon gray">📄</div>
+                                <div class="agent-info">
+                                    <h4>文件生成 Agent</h4>
+                                    <p>生成报关单 + 交叉校验...</p>
+                                </div>
+                                <span class="agent-status status-running">◐ 处理中</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 完成状态（点击按钮切换） -->
+                    <div id="resultPanel" class="result-panel">
+                        <div class="result-header">
+                            <h3>✅ 全流程完成</h3>
+                            <span class="badge badge-success">全部通过</span>
+                        </div>
+
+                        <!-- 完成Agent列表 -->
+                        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px;">
+                            <span style="font-size:12px; color:#10b981;">✓ 编码推理 Agent</span>
+                            <span style="font-size:12px; color:#10b981;">✓ 关税计算 Agent</span>
+                            <span style="font-size:12px; color:#10b981;">✓ 合规校验 Agent</span>
+                            <span style="font-size:12px; color:#10b981;">✓ 原产地 Agent</span>
+                            <span style="font-size:12px; color:#10b981;">✓ 文件生成 Agent</span>
+                        </div>
+
+                        <!-- HS编码结果 -->
+                        <div style="margin-bottom:20px;">
+                            <h4 style="font-size:14px; margin-bottom:8px;">HS 编码结果</h4>
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <span style="font-size:32px; font-weight:700; color:#0d9488; font-family:monospace;">940360</span>
+                                <span style="background:rgba(16,185,129,0.08); color:#10b981; padding:4px 12px; border-radius:20px; font-size:12px;">已确认</span>
+                            </div>
+                        </div>
+
+                        <!-- 税费明细 -->
+                        <div style="margin-bottom:20px;">
+                            <h4 style="font-size:14px; margin-bottom:8px;">税费明细</h4>
+                            <table class="tax-table">
+                                <tr>
+                                    <th>税费项目</th>
+                                    <th>税率</th>
+                                    <th>金额（美元）</th>
+                                </tr>
+                                <tr>
+                                    <td>完税价格（CIF）</td>
+                                    <td>-</td>
+                                    <td>$10,000.00</td>
+                                </tr>
+                                <tr>
+                                    <td>基础关税（MFN）</td>
+                                    <td>0%</td>
+                                    <td>$0.00</td>
+                                </tr>
+                                <tr>
+                                    <td>增值税</td>
+                                    <td>13%</td>
+                                    <td>$0.00</td>
+                                </tr>
+                                <tr>
+                                    <td>反倾销税</td>
+                                    <td>0%</td>
+                                    <td>$0.00</td>
+                                </tr>
+                                <tr>
+                                    <td>FTA优惠（RCEP）</td>
+                                    <td>-</td>
+                                    <td style="color:#10b981;">-$0.00</td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2">合计应缴税费</td>
+                                    <td>$0.00</td>
+                                </tr>
+                            </table>
+                        </div>
+
+                        <!-- 合规声明 -->
+                        <div style="margin-bottom:20px;">
+                            <h4 style="font-size:14px; margin-bottom:8px;">合规声明</h4>
+                            <div style="background:rgba(16,185,129,0.04); border:1px solid rgba(16,185,129,0.2); border-radius:8px; padding:12px; font-size:13px; line-height:1.6;">
+                                <p>本票货物经合规校验，风险等级为 <span style="color:#10b981; font-weight:600;">green</span>，无监管违规、无禁限控、符合GB/T 18513-2018《进口木材检验规程》及海关总署令第262号《进出口商品检验法实施条例》要求。</p>
+                            </div>
+                        </div>
+
+                        <!-- 交叉校验 -->
+                        <div style="margin-bottom:20px;">
+                            <h4 style="font-size:14px; margin-bottom:8px;">交叉校验</h4>
+                            <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                                <span style="font-size:12px; color:#10b981;">✓ 报关单HS编码与原产地证书一致</span>
+                                <span style="font-size:12px; color:#10b981;">✓ 商品名称三处一致</span>
+                                <span style="font-size:12px; color:#10b981;">✓ 原产国信息三处一致</span>
+                            </div>
+                        </div>
+
+                        <!-- 文件标签页 -->
+                        <div class="file-tabs">
+                            <button class="file-tab active" onclick="switchTab(this, 'customs')">📋 报关单草单</button>
+                            <button class="file-tab" onclick="switchTab(this, 'origin')">📜 原产地证书</button>
+                            <button class="file-tab" onclick="switchTab(this, 'compliance')">🛡️ 合规声明</button>
+                        </div>
+
+                        <!-- 报关单预览 -->
+                        <div id="customs" class="file-content">
+                            <div class="a4-preview">
+                                <h2>中华人民共和国海关出口货物报关单</h2>
+                                <div style="display:flex; justify-content:space-between; margin-bottom:16px;">
+                                    <span>预录入编号：20260608001</span>
+                                    <span>海关编号：________</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-cell" style="flex:2">
+                                        <label>出口口岸</label>
+                                        <div class="value">深圳蛇口港</div>
+                                    </div>
+                                    <div class="form-cell" style="flex:1">
+                                        <label>备案号</label>
+                                        <div class="value">________</div>
+                                    </div>
+                                    <div class="form-cell" style="flex:1">
+                                        <label>出口日期</label>
+                                        <div class="value">2026-06-15</div>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-cell" style="flex:2">
+                                        <label>经营单位</label>
+                                        <div class="value">深圳某某贸易有限公司</div>
+                                    </div>
+                                    <div class="form-cell" style="flex:1">
+                                        <label>运输方式</label>
+                                        <div class="value">海运</div>
+                                    </div>
+                                    <div class="form-cell" style="flex:1">
+                                        <label>运输工具名称</label>
+                                        <div class="value">EVER GLORY V.2606E</div>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-cell" style="flex:2">
+                                        <label>发货单位</label>
+                                        <div class="value">东莞某某家具有限公司</div>
+                                    </div>
+                                    <div class="form-cell" style="flex:1">
+                                        <label>贸易方式</label>
+                                        <div class="value">一般贸易</div>
+                                    </div>
+                                    <div class="form-cell" style="flex:1">
+                                        <label>征免性质</label>
+                                        <div class="value">一般征税</div>
+                                    </div>
+                                </div>
+                                <div style="margin-top:16px; border:1px solid #333;">
+                                    <div style="display:flex; border-bottom:1px solid #333; background:#f8fafc;">
+                                        <div style="flex:2; padding:6px; border-right:1px solid #333; font-size:11px;">商品名称及规格型号</div>
+                                        <div style="width:80px; padding:6px; border-right:1px solid #333; font-size:11px;">单位</div>
+                                        <div style="width:60px; padding:6px; border-right:1px solid #333; font-size:11px;">数量</div>
+                                        <div style="width:100px; padding:6px; border-right:1px solid #333; font-size:11px;">原产国</div>
+                                        <div style="width:100px; padding:6px; border-right:1px solid #333; font-size:11px;">单价</div>
+                                        <div style="width:100px; padding:6px; font-size:11px;">总价</div>
+                                    </div>
+                                    <div style="display:flex; border-bottom:1px solid #333;">
+                                        <div style="flex:2; padding:8px; border-right:1px solid #333;">
+                                            <div class="value">木质餐桌套装</div>
+                                            <div style="font-size:11px; color:#666;">橡胶木餐桌配4把椅子，桌面120x80cm，清漆处理，家用</div>
+                                        </div>
+                                        <div style="width:80px; padding:8px; border-right:1px solid #333;">套</div>
+                                        <div style="width:60px; padding:8px; border-right:1px solid #333;">100</div>
+                                        <div style="width:100px; padding:8px; border-right:1px solid #333;">中国</div>
+                                        <div style="width:100px; padding:8px; border-right:1px solid #333;">$100.00</div>
+                                        <div style="width:100px; padding:8px;">$10,000.00</div>
+                                    </div>
+                                    <div style="display:flex;">
+                                        <div style="flex:2; padding:8px; border-right:1px solid #333;">
+                                            <div style="font-size:11px; color:#666;">HS编码：940360</div>
+                                        </div>
+                                        <div style="width:80px; padding:8px; border-right:1px solid #333;"></div>
+                                        <div style="width:60px; padding:8px; border-right:1px solid #333;"></div>
+                                        <div style="width:100px; padding:8px; border-right:1px solid #333;"></div>
+                                        <div style="width:100px; padding:8px; border-right:1px solid #333;"></div>
+                                        <div style="width:100px; padding:8px;"></div>
+                                    </div>
+                                </div>
+                                <div style="margin-top:16px; text-align:center; color:#999; font-size:11px;">
+                                    （以下无正文）<br>
+                                    申报单位签章：________ &nbsp;&nbsp; 日期：________
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 原产地证书（隐藏） -->
+                        <div id="origin" class="file-content" style="display:none;">
+                            <div class="a4-preview">
+                                <h2>原产地证书申请书</h2>
+                                <div class="form-row">
+                                    <div class="form-cell" style="flex:1">
+                                        <label>申请人</label>
+                                        <div class="value">深圳某某贸易有限公司</div>
+                                    </div>
+                                    <div class="form-cell" style="flex:1">
+                                        <label>申请日期</label>
+                                        <div class="value">2026-06-08</div>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-cell" style="flex:1">
+                                        <label>证书类型</label>
+                                        <div class="value">☑ RCEP原产地证</div>
+                                    </div>
+                                    <div class="form-cell" style="flex:1">
+                                        <label>出口国</label>
+                                        <div class="value">中国</div>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-cell" style="flex:1">
+                                        <label>进口国</label>
+                                        <div class="value">美国</div>
+                                    </div>
+                                    <div class="form-cell" style="flex:1">
+                                        <label>运输方式</label>
+                                        <div class="value">海运</div>
+                                    </div>
+                                </div>
+                                <div style="margin-top:16px;">
+                                    <label>商品信息</label>
+                                    <div class="value">木质餐桌套装 | HS: 940360 |  Rubber wood dining table set</div>
+                                </div>
+                                <div style="margin-top:16px;">
+                                    <label>原产地标准</label>
+                                    <div class="value">☑ 区域价值成分（RVC）≥40% — RVC=65%</div>
+                                </div>
+                                <div style="margin-top:24px; text-align:center;">
+                                    申请人声明：以上所列货物符合RCEP原产地规则，申请签发原产地证书。<br><br>
+                                    申请人签章：________ &nbsp;&nbsp; 日期：________
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 合规声明（隐藏） -->
+                        <div id="compliance" class="file-content" style="display:none;">
+                            <div class="a4-preview">
+                                <div style="background:#10b981; color:white; text-align:center; padding:12px; margin:-40px -40px 20px; border-radius:4px 4px 0 0;">
+                                    <h2 style="margin:0; font-size:18px;">✓ 合规通过</h2>
+                                </div>
+                                <h2 style="text-align:center; margin-bottom:20px;">跨境合规贸易合规声明</h2>
+                                <div style="margin-bottom:16px;">
+                                    <strong>声明编号：</strong>CC-2026-0608-001<br>
+                                    <strong>生成日期：</strong>2026-06-08 15:19:32
+                                </div>
+                                <div style="margin-bottom:16px;">
+                                    <strong>【商品信息】</strong><br>
+                                    商品名称：木质餐桌套装 | HS编码：940360 | 目标国：美国
+                                </div>
+                                <div style="margin-bottom:16px;">
+                                    <strong>【合规校验结果】</strong><br><br>
+                                    ☑ 制裁清单校验 — 通过<br>
+                                    &nbsp;&nbsp;&nbsp;&nbsp;未命中OFAC SDN名单、中国不可靠实体清单<br><br>
+                                    ☑ 出口管制校验 — 通过<br>
+                                    &nbsp;&nbsp;&nbsp;&nbsp;非两用物项，无需出口许可证<br><br>
+                                    ☑ 环保合规校验 — 通过<br>
+                                    &nbsp;&nbsp;&nbsp;&nbsp;符合RoHS指令、REACH法规<br><br>
+                                    ☑ 食品安全校验 — 不适用<br><br>
+                                    ☑ 知识产权校验 — 通过
+                                </div>
+                                <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.2); padding:12px; border-radius:8px; margin-bottom:16px;">
+                                    <strong>综合评定：</strong>风险等级 🟢 低风险 | 可正常申报
+                                </div>
+                                <div style="font-size:11px; color:#999; text-align:center;">
+                                    本声明自生成之日起30日内有效 | AgenticCustoms 智能合规平台
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 底部操作 -->
+                        <div class="actions">
+                            <button class="btn btn-primary">⬇️ 打包下载全部文件（ZIP）</button>
+                            <button class="btn btn-secondary">🔄 重新分析</button>
+                        </div>
+                    </div>
+
+                    <!-- 切换按钮（演示用） -->
+                    <button onclick="toggleResult()" style="margin-top:16px; width:100%; padding:10px; background:#f1f5f9; border:none; border-radius:8px; cursor:pointer; color:#64748b;">
+                        👆 点击切换：运行中 / 已完成
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleResult() {
+            const running = document.getElementById('runningPanel');
+            const result = document.getElementById('resultPanel');
+            if (result.classList.contains('active')) {
+                result.classList.remove('active');
+                running.style.display = 'block';
+            } else {
+                running.style.display = 'none';
+                result.classList.add('active');
+            }
+        }
+
+        function switchTab(btn, id) {
+            document.querySelectorAll('.file-tab').forEach(t => t.classList.remove('active'));
+            btn.classList.add('active');
+            document.querySelectorAll('.file-content').forEach(c => c.style.display = 'none');
+            document.getElementById(id).style.display = 'block';
+        }
+    </script>
+</body>
+</html>

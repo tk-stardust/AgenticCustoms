@@ -18,7 +18,7 @@ const loading = ref(false)
 
 onMounted(async () => {
   loading.value = true
-  try { stats.value = await fetchStats(); records.value = await fetchHistory(50) }
+  try { stats.value = await fetchStats(); const h = await fetchHistory(1, 50); records.value = h.items }
   finally { loading.value = false }
 })
 

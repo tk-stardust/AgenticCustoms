@@ -104,4 +104,10 @@ async def run_pipeline(commodity, target_country: str):
         "target_country": target_country,
     })
     logger.info("pipeline.done")
-    return final_state["documents"]
+    return {
+        "documents": final_state["documents"],
+        "hs_result": final_state["hs_result"],
+        "tariff_result": final_state["tariff_result"],
+        "compliance_result": final_state["compliance_result"],
+        "origin_result": final_state["origin_result"],
+    }

@@ -1,18 +1,19 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search, Connection, DataAnalysis, Clock, ArrowRight, TrendCharts, Timer, Checked } from '@element-plus/icons-vue'
+import { fetchStats } from '@/api/stats'
 
 const router = useRouter()
 const visible = ref(false)
-onMounted(() => requestAnimationFrame(() => visible.value = true))
+const dbStats = ref({ total: 0, pass_rate: 100, warnings: 0, hs_codes: 0 })
 
-const cards = [
-  { path:'/classify',  title:'HS 编码归类', desc:'输入商品描述，AI 自动推理最匹配的 HS 编码，附推理路径与条文溯源', icon:Search,      color:'teal',   tags:['RAG 检索','~17s'],      stat:'本月已智能归类 1,247 件', bg:'linear-gradient(135deg,rgba(13,148,136,.03),rgba(13,148,136,.01))' },
-  { path:'/pipeline',  title:'一键全流程',   desc:'一次输入，同时完成归类、关税、合规、原产地分析，生成全套申报文件',   icon:Connection,  color:'indigo', tags:['多 Agent 协作','~60s'], stat:'平均节省申报时间 42 分钟',    bg:'linear-gradient(135deg,rgba(79,70,229,.03),rgba(79,70,229,.01))' },
-  { path:'/dashboard', title:'风险看板',     desc:'可视化展示申报国家分布、HS 章别统计，风险等级与合规趋势一目了然',     icon:DataAnalysis, color:'amber',  tags:['数据看板'],             stat:'当前待处理风险预警 3 项',       bg:'linear-gradient(135deg,rgba(245,158,11,.03),rgba(245,158,11,.01))' },
-  { path:'/history',   title:'历史记录',     desc:'查看过往申报记录，追溯每次合规分析的完整结果与校验详情',               icon:Clock,       color:'slate',  tags:['可追溯'],               stat:'共 86 条申报记录',             bg:'linear-gradient(135deg,rgba(100,116,139,.03),rgba(100,116,139,.01))' },
-]
+const cards = computed(() => [
+  { path:'/classify',  title:'HS 编码归类', desc:'输入商品描述，AI 自动推理最匹配的 HS 编码，附推理路径与条文溯源', icon:Search,      color:'teal',   tags:['RAG 检索','~17s'],      stat:`已收录 ${dbStats.value.hs_codes} 条 HS 编码`,     bg:'linear-gradient(135deg,rgba(13,148,136,.03),rgba(13,148,136,.01))' },
+  { path:'/pipeline',  title:'一键全流程',   desc:'一次输入，同时完成归类、关税、合规、原产地分析，生成全套申报文件',   icon:Connection,  color:'indigo', tags:['多 Agent 协作','~60s'], stat:`合规通过率 ${dbStats.value.pass_rate}%`,          bg:'linear-gradient(135deg,rgba(79,70,229,.03),rgba(79,70,229,.01))' },
+  { path:'/dashboard', title:'风险看板',     desc:'可视化展示申报国家分布、HS 章别统计，风险等级与合规趋势一目了然',     icon:DataAnalysis, color:'amber',  tags:['数据看板'],             stat:`当前 ${dbStats.value.warnings} 项风险预警待处理`,   bg:'linear-gradient(135deg,rgba(245,158,11,.03),rgba(245,158,11,.01))' },
+  { path:'/history',   title:'历史记录',     desc:'查看过往申报记录，追溯每次合规分析的完整结果与校验详情',               icon:Clock,       color:'slate',  tags:['可追溯'],               stat:`共 ${dbStats.value.total} 条申报记录`,            bg:'linear-gradient(135deg,rgba(100,116,139,.03),rgba(100,116,139,.01))' },
+])
 const colorMap: Record<string,{bg:string;fg:string}> = {
   teal:{bg:'rgba(13,148,136,.1)',fg:'#0d9488'}, indigo:{bg:'rgba(79,70,229,.1)',fg:'#4f46e5'},
   amber:{bg:'rgba(245,158,11,.1)',fg:'#f59e0b'}, slate:{bg:'rgba(100,116,139,.1)',fg:'#64748b'},
@@ -21,6 +22,11 @@ const flowSteps = [
   { icon:'🔍', label:'HS 归类' }, { icon:'💰', label:'关税计算' },
   { icon:'🛡️', label:'合规校验' }, { icon:'📍', label:'原产地匹配' }, { icon:'📄', label:'申报文件' },
 ]
+
+onMounted(async () => {
+  requestAnimationFrame(() => visible.value = true)
+  try { dbStats.value = await fetchStats() } catch { /* keep defaults */ }
+})
 </script>
 
 <template>

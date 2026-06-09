@@ -97,6 +97,14 @@ export interface StepError {
   message: string
 }
 
+export interface PipelineFullResponse {
+  request_id: string
+  documents: DeclarationDoc
+  tariff_result: TariffResult
+  compliance_result: ComplianceResult
+  origin_result: OriginResult
+}
+
 // ---- API ----
 
 export interface ApiResponse<T> {

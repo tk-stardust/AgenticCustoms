@@ -12,7 +12,14 @@ export interface HistoryRecord {
   results: Record<string, unknown> | null
 }
 
-export async function fetchHistory(limit: number = 20): Promise<HistoryRecord[]> {
-  const { data } = await client.get<HistoryRecord[]>(`/history?limit=${limit}`)
+export interface HistoryPage {
+  items: HistoryRecord[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export async function fetchHistory(page: number = 1, page_size: number = 20): Promise<HistoryPage> {
+  const { data } = await client.get<HistoryPage>(`/history?page=${page}&page_size=${page_size}`)
   return data
 }

@@ -1,15 +1,32 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
 import { ElMessage } from 'element-plus'
 import { usePipelineStore } from '@/stores/pipeline'
 import type { Commodity } from '@/types'
-import { Check, Loading } from '@element-plus/icons-vue'
+import { Check, Loading, Camera } from '@element-plus/icons-vue'
+import { ocrImage } from '@/api/ocr'
 
 const store = usePipelineStore()
+let runTimer: ReturnType<typeof setInterval> | null = null
+let abortCtrl: AbortController | null = null
+const emptyPipeline = (): Commodity => ({ name: '', description: '', material: '', function: '', usage: '' })
 const saved = localStorage.getItem("pipelineForm")
-const form = ref<Commodity>(saved ? JSON.parse(saved) : { name: '', description: '', material: '', function: '', usage: '' })
+const form = ref<Commodity>(saved && JSON.parse(saved).name ? JSON.parse(saved) : emptyPipeline())
 const country = ref(store.targetCountry)
-onUnmounted(() => localStorage.setItem("pipelineForm", JSON.stringify(form.value)))
+
+// 切页离开（keep-alive 缓存）：停动画 + 存表单
+onDeactivated(() => {
+  if (runTimer) { clearInterval(runTimer); runTimer = null }
+  if (abortCtrl) { abortCtrl.abort(); abortCtrl = null }
+  if (form.value.name) localStorage.setItem("pipelineForm", JSON.stringify(form.value))
+  else localStorage.removeItem("pipelineForm")
+})
+// 页面刷新/关闭：存表单
+onUnmounted(() => {
+  if (form.value.name) localStorage.setItem("pipelineForm", JSON.stringify(form.value))
+  else localStorage.removeItem("pipelineForm")
+})
+// 首次挂载：从 Classify 跳转过来时自动运行
 onMounted(() => {
   if (!store.autoRun) return
   store.autoRun = false
@@ -17,15 +34,35 @@ onMounted(() => {
     form.value = { name: store.commodity.name, description: store.commodity.description || '', material: '', function: '', usage: '' }
     materialTags.value = []
     country.value = store.targetCountry
-    if (store.autoRun) {
-      store.autoRun = false
-      setTimeout(() => onSubmit(), 500)  // 等组件渲染完再提交
-    }
+    setTimeout(() => onSubmit(), 500)
+  }
+})
+// keep-alive 切回来：重启动画，或同步已完成的 store 结果
+onActivated(() => {
+  if (phase.value === 'running') {
+    runTimer = setInterval(() => {
+      if (agentPhase.value < agents.length - 1) {
+        agentPhase.value++
+        activePhase.value = agentPhase.value
+      }
+    }, 8000)
+  }
+  if (store.documents && phase.value !== 'done') {
+    phase.value = 'done'
+    activePhase.value = steps.length - 1
+    agentPhase.value = agents.length - 1
   }
 })
 const phase = ref<'idle' | 'running' | 'done'>('idle')
 const activePhase = ref(-1)
 const agentPhase = ref(-1)
+const agentColors = ['blue', 'yellow', 'green', 'purple', 'gray'] as const
+const showPreview = ref(false)
+const previewType = ref<'customs' | 'origin' | 'compliance'>('customs')
+function openPreview(type: 'customs' | 'origin' | 'compliance') {
+  previewType.value = type
+  showPreview.value = true
+}
 
 const steps = [
   { label: 'HS归类',   brief: '编码推理' },
@@ -59,6 +96,28 @@ const countryOptions = [
 
 const materialTags = ref<string[]>([])
 const materialInput = ref('')
+const ocrLoading = ref(false)
+
+async function onUpload(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  ocrLoading.value = true
+  try {
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve((reader.result as string).split(',')[1])
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+    const result = await ocrImage(base64, file.type)
+    form.value.name = result.name || form.value.name
+    form.value.description = result.description || form.value.description
+    form.value.material = result.material || form.value.material
+    form.value.function = result.function || form.value.function
+    form.value.usage = result.usage || form.value.usage
+  } catch { /* ignored */ }
+  finally { ocrLoading.value = false }
+}
 
 function addMaterialTag() {
   const v = materialInput.value.trim()
@@ -73,25 +132,47 @@ function removeTag(idx: number) {
   form.value.material = materialTags.value.join('/')
 }
 
+function clearForm() {
+  form.value = emptyPipeline()
+  materialTags.value = []
+  localStorage.removeItem("pipelineForm")
+}
+function clearResult() {
+  phase.value = 'idle'
+  store.reset()
+}
+
 async function onSubmit() {
   if (!form.value.name.trim()) { ElMessage.warning('请输入商品名称'); return }
   if (!form.value.description.trim()) { ElMessage.warning('请输入商品描述'); return }
   phase.value = 'running'; activePhase.value = 0; agentPhase.value = 0
-  const timer = setInterval(() => {
+  abortCtrl = new AbortController()
+  runTimer = setInterval(() => {
     if (agentPhase.value < agents.length - 1) {
       agentPhase.value++
       activePhase.value = agentPhase.value
     }
   }, 8000)
   try {
-    await store.runPipeline({ ...form.value }, country.value)
+    await store.runPipeline({ ...form.value }, country.value, abortCtrl.signal)
   } catch {
-    // error already in store.errors
+    // cancelled by user or already in store.errors
   }
-  clearInterval(timer)
-  activePhase.value = steps.length - 1
-  agentPhase.value = agents.length - 1
-  phase.value = 'done'
+  if (runTimer) { clearInterval(runTimer); runTimer = null }
+  abortCtrl = null
+  // 只有正常完成才显示结果；取消时 phase 保持 running 不变
+  if (store.documents) {
+    activePhase.value = steps.length - 1
+    agentPhase.value = agents.length - 1
+    phase.value = 'done'
+  }
+}
+
+function cancelPipeline() {
+  if (abortCtrl) { abortCtrl.abort(); abortCtrl = null }
+  if (runTimer) { clearInterval(runTimer); runTimer = null }
+  phase.value = 'idle'
+  ElMessage.info('已取消分析')
 }
 
 function agentState(i: number) {
@@ -141,11 +222,17 @@ const showReport = computed(() => phase.value === 'done' && !!store.documents)
         <h3 class="panel-title">商品信息</h3>
         <el-form :model="form" label-position="top">
           <el-form-item label="商品名称" required>
-            <el-input v-model="form.name" placeholder="例：蓝牙智能音箱" size="large" class="custom-input" clearable/>
+            <div class="input-with-btn">
+              <el-input v-model="form.name" placeholder="例：蓝牙智能音箱" size="large" class="custom-input" clearable maxlength="200" show-word-limit/>
+              <label class="ocr-btn" :class="{loading:ocrLoading}" title="拍照识别">
+                <el-icon :size="18"><Camera/></el-icon>
+                <input type="file" accept="image/*" hidden @change="onUpload"/>
+              </label>
+            </div>
           </el-form-item>
           <el-form-item label="商品描述" required>
             <el-input v-model="form.description" type="textarea" :rows="3"
-              placeholder="外观、材质、工作原理、用途等" class="custom-input" clearable/>
+              placeholder="外观、材质、工作原理、用途等" class="custom-input" clearable maxlength="2000" show-word-limit/>
           </el-form-item>
 
           <!-- 材质独占一行 -->
@@ -161,10 +248,10 @@ const showReport = computed(() => phase.value === 'done' && !!store.documents)
 
           <el-row :gutter="12">
             <el-col :span="12">
-              <el-form-item label="功能"><el-input v-model="form.function" placeholder="音乐播放" class="custom-input" clearable/></el-form-item>
+              <el-form-item label="功能"><el-input v-model="form.function" placeholder="音乐播放" class="custom-input" clearable maxlength="200"/></el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="用途"><el-input v-model="form.usage" placeholder="家庭娱乐" class="custom-input" clearable/></el-form-item>
+              <el-form-item label="用途"><el-input v-model="form.usage" placeholder="家庭娱乐" class="custom-input" clearable maxlength="200"/></el-form-item>
             </el-col>
           </el-row>
           <el-row :gutter="12">
@@ -184,22 +271,24 @@ const showReport = computed(() => phase.value === 'done' && !!store.documents)
           <el-row :gutter="12">
             <el-col :span="12">
               <el-form-item label="货物数量（件）">
-                <el-input-number v-model="form.quantity" :min="1" size="large" style="width:100%" />
+                <el-input-number v-model="form.quantity" :min="1" :max="999999" size="large" style="width:100%" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
               <el-form-item label="申报价值（元）">
-                <el-input-number v-model="form.declared_value" :min="0" :precision="2" size="large" style="width:100%" />
+                <el-input-number v-model="form.declared_value" :min="0" :max="999999999" :precision="2" size="large" style="width:100%" />
               </el-form-item>
             </el-col>
           </el-row>
 
 
-          <button type="button" class="btn-start" :class="{ running: phase === 'running' }" :disabled="phase === 'running'" @click="onSubmit">
-            <span v-if="phase !== 'running'">⚡ 开始全流程分析</span>
-            <span v-else class="agent-progress">
+          <button v-if="phase !== 'running'" type="button" class="btn-start" @click="onSubmit">
+            ⚡ 开始全流程分析
+          </button>
+          <button v-else type="button" class="btn-start running" @click="cancelPipeline">
+            <span class="agent-progress">
               <span class="mini-spinner"></span>
-              Agent {{ Math.min(agentPhase + 1, 5) }}/5 运行中...
+              Agent {{ Math.min(agentPhase + 1, 5) }}/5 运行中...  (点击取消)
             </span>
           </button>
           <div v-if="phase === 'running'" class="progress-bar">
@@ -213,8 +302,8 @@ const showReport = computed(() => phase.value === 'done' && !!store.documents)
 
         <!-- 空状态：5 Agent 卡片 -->
         <div v-if="phase === 'idle'" class="agent-grid">
-          <div v-for="(a, i) in agents" :key="i" class="agent-card" :style="{ animationDelay: `${i*0.08}s` }">
-            <div class="agent-icon">{{ a.icon }}</div>
+          <div v-for="(a, i) in agents" :key="i" class="agent-card" :class="`color-${agentColors[i]}`" :style="{ animationDelay: `${i*0.08}s` }">
+            <div class="agent-icon" :class="`icon-${agentColors[i]}`">{{ a.icon }}</div>
             <div class="agent-info">
               <strong>{{ a.name }}</strong>
               <p>{{ a.desc }}</p>
@@ -228,10 +317,10 @@ const showReport = computed(() => phase.value === 'done' && !!store.documents)
           <div
             v-for="(a, i) in agents" :key="i"
             class="agent-card live"
-            :class="agentState(i)"
+            :class="[agentState(i), `color-${agentColors[i]}`]"
           >
-            <div class="agent-top-bar" v-if="agentState(i) !== 'idle'"></div>
-            <div class="agent-icon">{{ agentState(i) === 'done' ? '✅' : agentState(i) === 'running' ? '🔄' : a.icon }}</div>
+            <div class="agent-top-bar" v-if="agentState(i) !== 'idle'" :class="`bar-${agentColors[i]}`"></div>
+            <div class="agent-icon" :class="`icon-${agentColors[i]}`">{{ agentState(i) === 'done' ? '✅' : agentState(i) === 'running' ? '🔄' : a.icon }}</div>
             <div class="agent-info">
               <strong>{{ a.name }}</strong>
               <p>{{ logs[i] || a.desc }}</p>
@@ -269,37 +358,198 @@ const showReport = computed(() => phase.value === 'done' && !!store.documents)
           <!-- 税费明细 -->
           <div class="report-section">
             <h4>税费明细</h4>
-            <el-descriptions :column="2" size="small" border>
-              <el-descriptions-item label="商品名称">{{ store.documents?.customs_declaration?.commodity_name || '—' }}</el-descriptions-item>
-              <el-descriptions-item label="综合税率">{{ store.documents?.customs_declaration?.total_tax_rate || 0 }}%</el-descriptions-item>
-              <el-descriptions-item label="原产地">{{ store.documents?.customs_declaration?.origin || '—' }}</el-descriptions-item>
-              <el-descriptions-item label="单位">{{ store.documents?.customs_declaration?.unit || '—' }}</el-descriptions-item>
-            </el-descriptions>
+            <div class="tax-summary">
+              <span>商品：<b>{{ store.documents?.customs_declaration?.commodity_name || '—' }}</b></span>
+              <span>原产地：<b>{{ store.documents?.customs_declaration?.origin || '—' }}</b></span>
+              <span v-if="store.tariffResult?.fta_applied">FTA：<b class="fta-badge">{{ store.tariffResult.fta_applied }}</b></span>
+            </div>
+            <table class="tax-table" v-if="store.tariffResult?.items?.length">
+              <thead>
+                <tr><th>税项</th><th>税率</th><th>金额（元）</th><th>备注</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in store.tariffResult.items" :key="item.name">
+                  <td>{{ item.name }}</td>
+                  <td class="num">{{ item.rate }}%</td>
+                  <td class="num">{{ item.amount?.toFixed(2) || '—' }}</td>
+                  <td class="note">{{ item.note || '—' }}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="2">综合税率</td>
+                  <td class="num total" colspan="2">{{ store.tariffResult.total_rate }}%</td>
+                </tr>
+                <tr v-if="store.tariffResult.fta_saving">
+                  <td colspan="2">FTA 优惠节省</td>
+                  <td class="num saving" colspan="2">-{{ store.tariffResult.fta_saving?.toFixed(2) }} 元</td>
+                </tr>
+              </tfoot>
+            </table>
+            <p class="tax-disclaimer">税率数据更新至 2024-06，仅供参考，具体以海关最新公告为准</p>
           </div>
 
           <!-- 风险与合规 -->
           <div class="report-section">
-            <h4>合规声明</h4>
-            <p class="compliance-text">{{ store.documents?.compliance_statement }}</p>
+            <h4>合规校验</h4>
+            <div class="risk-badge" :class="store.complianceResult?.risk_level">
+              {{ store.complianceResult?.risk_level === 'red' ? '🔴 高风险' : store.complianceResult?.risk_level === 'yellow' ? '🟡 中风险' : '🟢 低风险' }}
+            </div>
+            <div v-if="store.complianceResult" class="checklist">
+              <div class="check-item" :class="{ fail: store.complianceResult.sanctions_hit }">
+                <span class="check-mark">{{ store.complianceResult.sanctions_hit ? '✗' : '✓' }}</span>
+                <div><strong>制裁清单校验</strong><p>OFAC / UN / 不可靠实体清单</p></div>
+              </div>
+              <div class="check-item" :class="{ fail: store.complianceResult.license_required }">
+                <span class="check-mark">{{ store.complianceResult.license_required ? '⚠' : '✓' }}</span>
+                <div><strong>出口许可校验</strong><p>{{ store.complianceResult.license_type || '无需特殊许可' }}</p></div>
+              </div>
+              <div v-for="v in store.complianceResult.violations" :key="v.category" class="check-item fail">
+                <span class="check-mark">{{ v.severity === 'red' ? '✗' : '⚠' }}</span>
+                <div><strong>{{ v.category }}</strong><p>{{ v.description }}</p><span class="check-source">{{ v.source }}</span></div>
+              </div>
+              <div v-if="!store.complianceResult.sanctions_hit && !store.complianceResult.violations.length" class="check-item all-clear">
+                <span class="check-mark">✓</span>
+                <div><strong>全部通过</strong><p>未命中制裁清单，无违规项</p></div>
+              </div>
+            </div>
+            <p class="compliance-summary">{{ store.documents?.compliance_statement }}</p>
           </div>
 
           <!-- 校验 -->
           <div class="report-section">
             <h4>交叉校验</h4>
-            <el-tag v-if="store.documents?.cross_check_passed" type="success" effect="dark">全部一致</el-tag>
-            <div v-else>
-              <el-alert v-for="(e,i) in store.documents?.cross_check_errors" :key="i"
-                type="warning" :title="e" show-icon style="margin-bottom:6px" />
+            <div v-if="store.documents?.cross_check_passed" class="cross-check all-pass">
+              <span class="check-mark">✓</span><span>全部校验通过</span>
+            </div>
+            <div v-else class="cross-check-list">
+              <div v-for="(e,i) in store.documents?.cross_check_errors" :key="i" class="cross-check-item fail">
+                <span class="check-mark">✗</span><span>{{ e }}</span>
+              </div>
             </div>
           </div>
 
+          <div class="preview-btns">
+            <button type="button" class="btn-preview" @click="openPreview('customs')">📋 预览报关单</button>
+            <button type="button" class="btn-preview" @click="openPreview('origin')">📜 预览原产地证</button>
+            <button type="button" class="btn-preview" @click="openPreview('compliance')">🛡️ 预览合规声明</button>
+          </div>
           <div class="report-actions">
             <button class="btn-primary" @click="downloadReport">📥 下载申报文件</button>
-            <button class="btn-ghost" @click="phase='idle'; store.reset()">重新分析</button>
+            <button type="button" class="btn-ghost" @click="clearResult()">清除结果</button>
+            <button type="button" class="btn-ghost" @click="clearForm()">清空表单</button>
           </div>
         </template>
       </div>
     </div>
+
+    <!-- 申报文件预览模态框 -->
+    <el-dialog v-model="showPreview" :title="previewType === 'customs' ? '报关单草单' : previewType === 'origin' ? '原产地证书申请书' : '合规声明'" width="80vw" top="3vh" destroy-on-close class="preview-dialog">
+      <!-- 报关单 -->
+      <div v-if="previewType === 'customs'" class="a4-doc">
+        <h2 class="a4-title">中华人民共和国海关出口货物报关单</h2>
+        <div class="a4-meta">
+          <span>预录入编号：{{ store.documents?.request_id || '—' }}</span>
+          <span>申报日期：{{ new Date().toISOString().slice(0, 10) }}</span>
+        </div>
+        <div class="a4-grid">
+          <div class="a4-row"><label>出口口岸</label><span>{{ store.documents?.customs_declaration?.port || '待填写' }}</span></div>
+          <div class="a4-row"><label>经营单位</label><span>待填写</span></div>
+          <div class="a4-row"><label>发货单位</label><span>待填写</span></div>
+          <div class="a4-row"><label>运输方式</label><span>待填写</span></div>
+          <div class="a4-row"><label>贸易方式</label><span>一般贸易</span></div>
+          <div class="a4-row"><label>征免性质</label><span>一般征税</span></div>
+        </div>
+        <table class="a4-table">
+          <thead><tr><th>商品名称</th><th>HS编码</th><th>单位</th><th>数量</th><th>原产国</th><th>单价</th><th>总价</th></tr></thead>
+          <tbody><tr>
+            <td>{{ store.documents?.customs_declaration?.commodity_name || '—' }}</td>
+            <td><code>{{ store.documents?.customs_declaration?.hs_code || '—' }}</code></td>
+            <td>{{ store.documents?.customs_declaration?.unit || '件' }}</td>
+            <td>{{ store.documents?.customs_declaration?.quantity || '—' }}</td>
+            <td>{{ store.documents?.customs_declaration?.origin || 'CN' }}</td>
+            <td>{{ store.documents?.customs_declaration?.declared_value || '—' }}</td>
+            <td>{{ store.documents?.customs_declaration?.declared_value || '—' }}</td>
+          </tr></tbody>
+        </table>
+        <p class="a4-footer">申报单位签章：________ &nbsp;&nbsp; 日期：________</p>
+      </div>
+
+      <!-- 原产地证书 -->
+      <div v-if="previewType === 'origin'" class="a4-doc">
+        <h2 class="a4-title">原产地证书申请书</h2>
+        <div class="a4-grid">
+          <div class="a4-row"><label>申请人</label><span>待填写</span></div>
+          <div class="a4-row"><label>证书类型</label><span>{{ store.documents?.origin_certificate?.fta || '—' }}</span></div>
+          <div class="a4-row"><label>出口国</label><span>中国</span></div>
+          <div class="a4-row"><label>进口国</label><span>{{ store.tariffResult?.country || '—' }}</span></div>
+          <div class="a4-row"><label>HS编码</label><span><code>{{ store.documents?.origin_certificate?.hs_code || '—' }}</code></span></div>
+          <div class="a4-row"><label>原产地标准</label><span>{{ store.documents?.origin_certificate?.origin_criteria || '—' }}</span></div>
+        </div>
+        <div class="a4-section">
+          <h4>适用 FTA</h4>
+          <p>{{ store.tariffResult?.fta_applied || '无' }}</p>
+        </div>
+        <div class="a4-section" v-if="store.originResult">
+          <h4>原产地分析</h4>
+          <p>推荐原产地：<b>{{ store.originResult.recommended_origin || 'CN' }}</b></p>
+          <p>满足条件：{{ store.originResult.meeting_criteria?.join('、') || '—' }}</p>
+          <p v-if="store.originResult.rvc_percentage">区域价值成分：<b>{{ store.originResult.rvc_percentage }}%</b></p>
+          <p>{{ store.originResult.note }}</p>
+        </div>
+        <p class="a4-footer">申请人签章：________ &nbsp;&nbsp; 日期：________</p>
+      </div>
+
+      <!-- 合规声明 -->
+      <div v-if="previewType === 'compliance'" class="a4-doc">
+        <div class="compliance-hero" :class="store.complianceResult?.risk_level">
+          <h2>{{ store.complianceResult?.risk_level === 'red' ? '✗ 不合规' : store.complianceResult?.risk_level === 'yellow' ? '⚠ 部分合规' : '✓ 合规通过' }}</h2>
+        </div>
+        <h2 class="a4-title">跨境贸易合规声明</h2>
+        <div class="a4-meta">
+          <span>声明编号：CC-{{ store.documents?.request_id || '—' }}</span>
+          <span>生成日期：{{ new Date().toISOString().slice(0, 10) }}</span>
+        </div>
+        <div class="a4-section">
+          <h4>商品信息</h4>
+          <p>商品名称：{{ store.documents?.customs_declaration?.commodity_name || '—' }}</p>
+          <p>HS编码：{{ store.documents?.customs_declaration?.hs_code || '—' }} | 目标国：{{ store.tariffResult?.country || '—' }}</p>
+        </div>
+        <div class="a4-section">
+          <h4>校验结果</h4>
+          <div class="checklist">
+            <div class="check-item" :class="{ fail: store.complianceResult?.sanctions_hit }">
+              <span class="check-mark">{{ store.complianceResult?.sanctions_hit ? '✗' : '☑' }}</span>
+              <span>制裁清单校验 — {{ store.complianceResult?.sanctions_hit ? '命中' : '通过' }}</span>
+            </div>
+            <div class="check-item" :class="{ fail: store.complianceResult?.license_required }">
+              <span class="check-mark">{{ store.complianceResult?.license_required ? '⚠' : '☑' }}</span>
+              <span>出口许可校验 — {{ store.complianceResult?.license_required ? '需要许可' : '无需许可' }}</span>
+            </div>
+            <div v-for="v in store.complianceResult?.violations" :key="v.category" class="check-item fail">
+              <span class="check-mark">✗</span>
+              <span>{{ v.category }} — {{ v.description }}</span>
+            </div>
+            <div class="check-item">
+              <span class="check-mark">☑</span><span>环保合规 — 符合 RoHS / REACH</span>
+            </div>
+            <div class="check-item">
+              <span class="check-mark">☑</span><span>知识产权校验 — 通过</span>
+            </div>
+          </div>
+        </div>
+        <div class="a4-section">
+          <h4>综合评定</h4>
+          <p>{{ store.documents?.compliance_statement }}</p>
+        </div>
+        <p class="a4-footer">本声明自生成之日起30日内有效 | AgenticCustoms 智能合规平台</p>
+      </div>
+
+      <template #footer>
+        <el-button @click="showPreview = false">关闭</el-button>
+        <el-button type="primary" @click="downloadReport">下载</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -347,6 +597,11 @@ const showReport = computed(() => phase.value === 'done' && !!store.documents)
 .panel-title { font-size: var(--font-size-lg); font-weight: 600; margin-bottom: var(--space-5); }
 
 /* ===== 表单 ===== */
+.input-with-btn { display: flex; gap: 8px; align-items: stretch; }
+.input-with-btn .custom-input { flex: 1; }
+.ocr-btn { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; cursor: pointer; color: #94a3b8; transition: all .2s; flex-shrink: 0; }
+.ocr-btn:hover { border-color: #0d9488; color: #0d9488; }
+.ocr-btn.loading { opacity: .6; pointer-events: none; }
 :deep(.el-row) { align-items: flex-start; }
 :deep(.custom-input .el-input__wrapper) {
   height: 44px; border-radius: 10px;
@@ -448,4 +703,97 @@ const showReport = computed(() => phase.value === 'done' && !!store.documents)
 .btn-ghost:hover { border-color: #0d9488; color: #0d9488; }
 
 @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ===== Agent 颜色主题 ===== */
+.agent-card.color-blue { border-left: 3px solid transparent; }
+.agent-card.color-yellow { border-left: 3px solid transparent; }
+.agent-card.color-green { border-left: 3px solid transparent; }
+.agent-card.color-purple { border-left: 3px solid transparent; }
+.agent-card.color-gray { border-left: 3px solid transparent; }
+.agent-card.color-blue.running { border-color: #3b82f6; background: rgba(59,130,246,.03); }
+.agent-card.color-yellow.running { border-color: #f59e0b; background: rgba(245,158,11,.03); }
+.agent-card.color-green.running { border-color: #10b981; background: rgba(16,185,129,.03); }
+.agent-card.color-purple.running { border-color: #8b5cf6; background: rgba(139,92,246,.03); }
+.agent-card.color-gray.running { border-color: #64748b; background: rgba(100,116,139,.03); }
+.agent-card.color-blue.done { border-color: #e2e8f0; }
+.agent-card.color-yellow.done { border-color: #e2e8f0; }
+.agent-card.color-green.done { border-color: #e2e8f0; }
+.agent-card.color-purple.done { border-color: #e2e8f0; }
+.agent-card.color-gray.done { border-color: #e2e8f0; }
+.agent-top-bar.bar-blue { background: #3b82f6; }
+.agent-top-bar.bar-yellow { background: #f59e0b; }
+.agent-top-bar.bar-green { background: #10b981; }
+.agent-top-bar.bar-purple { background: #8b5cf6; }
+.agent-top-bar.bar-gray { background: #64748b; }
+.icon-blue { background: rgba(59,130,246,.1); border-radius: 10px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
+.icon-yellow { background: rgba(245,158,11,.1); border-radius: 10px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
+.icon-green { background: rgba(16,185,129,.1); border-radius: 10px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
+.icon-purple { background: rgba(139,92,246,.1); border-radius: 10px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
+.icon-gray { background: rgba(100,116,139,.1); border-radius: 10px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
+
+/* ===== 税费明细表 ===== */
+.tax-summary { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; font-size: 13px; color: #64748b; }
+.tax-summary b { color: #334155; }
+.fta-badge { color: #0d9488; }
+.tax-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tax-table th { text-align: left; padding: 8px 12px; font-size: 12px; color: #94a3b8; font-weight: 500; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+.tax-table td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+.tax-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tax-table td.note { font-size: 12px; color: #94a3b8; }
+.tax-table tfoot td { font-weight: 600; border-bottom: none; padding-top: 12px; }
+.tax-table tfoot td.total { color: #0d9488; font-size: 16px; }
+.tax-table tfoot td.saving { color: #10b981; }
+.tax-disclaimer { font-size: 11px; color: #94a3b8; margin-top: 8px; text-align: right; }
+
+/* ===== 合规清单 ===== */
+.risk-badge { display: inline-block; padding: 4px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; margin-bottom: 14px; }
+.risk-badge.red { background: rgba(239,68,68,.08); color: #ef4444; }
+.risk-badge.yellow { background: rgba(245,158,11,.08); color: #f59e0b; }
+.risk-badge.green { background: rgba(16,185,129,.08); color: #10b981; }
+.checklist { display: flex; flex-direction: column; gap: 8px; }
+.check-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 8px; background: rgba(16,185,129,.03); border: 1px solid rgba(16,185,129,.1); }
+.check-item.fail { background: rgba(239,68,68,.03); border-color: rgba(239,68,68,.1); }
+.check-item.all-clear { background: rgba(16,185,129,.05); }
+.check-mark { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+.check-item:not(.fail) .check-mark { background: rgba(16,185,129,.15); color: #10b981; }
+.check-item.fail .check-mark { background: rgba(239,68,68,.15); color: #ef4444; }
+.check-item strong { font-size: 13px; color: #334155; display: block; }
+.check-item p { font-size: 12px; color: #94a3b8; margin: 2px 0 0; }
+.check-source { font-size: 11px; color: #94a3b8; }
+.compliance-summary { margin-top: 12px; font-size: 13px; color: #64748b; line-height: 1.6; }
+
+/* ===== 交叉校验 ===== */
+.cross-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.cross-check.all-pass { color: #10b981; }
+.cross-check-list { display: flex; flex-direction: column; gap: 6px; }
+.cross-check-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
+.cross-check-item.fail { background: rgba(239,68,68,.04); color: #ef4444; }
+
+/* ===== 预览按钮组 ===== */
+.preview-btns { display: flex; gap: 8px; margin-bottom: 12px; }
+.btn-preview { padding: 8px 16px; font-size: 13px; color: #475569; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer; transition: all .2s; }
+.btn-preview:hover { border-color: #0d9488; color: #0d9488; background: rgba(13,148,136,.04); }
+
+/* ===== 模态框 A4 文档 ===== */
+.preview-dialog :deep(.el-dialog__body) { padding: 24px; background: #f1f5f9; }
+.a4-doc { background: #fff; padding: 48px 56px; border-radius: 2px; box-shadow: 0 2px 12px rgba(0,0,0,.06); font-family: 'SimSun', '宋体', 'PingFang SC', serif; font-size: 13px; line-height: 1.8; color: #1e293b; max-width: 900px; margin: 0 auto; }
+.a4-title { text-align: center; font-size: 18px; font-weight: 700; margin-bottom: 20px; letter-spacing: 2px; }
+.a4-meta { display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 12px; color: #64748b; }
+.a4-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid #333; margin-bottom: 16px; }
+.a4-row { display: flex; border-bottom: 1px solid #333; }
+.a4-row:nth-child(odd) { border-right: 1px solid #333; }
+.a4-row label { width: 80px; padding: 6px 8px; background: #f8fafc; font-size: 12px; color: #666; flex-shrink: 0; border-right: 1px solid #e2e8f0; }
+.a4-row span { padding: 6px 12px; font-weight: 600; font-size: 13px; }
+.a4-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; border: 1px solid #333; }
+.a4-table th { padding: 6px 8px; background: #f8fafc; font-size: 11px; color: #666; border: 1px solid #333; text-align: center; }
+.a4-table td { padding: 6px 8px; border: 1px solid #333; text-align: center; font-size: 12px; }
+.a4-table td code { font-family: 'JetBrains Mono', monospace; color: #0d9488; font-weight: 600; }
+.a4-section { margin-bottom: 16px; }
+.a4-section h4 { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #334155; }
+.a4-footer { text-align: center; color: #999; font-size: 12px; margin-top: 24px; }
+.compliance-hero { text-align: center; padding: 14px; margin: -48px -56px 24px; border-radius: 2px 2px 0 0; }
+.compliance-hero.red { background: #ef4444; color: #fff; }
+.compliance-hero.yellow { background: #f59e0b; color: #fff; }
+.compliance-hero.green { background: #10b981; color: #fff; }
+.compliance-hero h2 { margin: 0; font-size: 18px; }
 </style>

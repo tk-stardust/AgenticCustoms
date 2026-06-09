@@ -1,7 +1,7 @@
 """申报历史记录接口"""
 
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import select, desc, delete
+from sqlalchemy import select, desc, delete, func
 
 from data.db.database import async_session
 from data.db.models import Declaration
@@ -13,19 +13,26 @@ router = APIRouter(prefix="/api", tags=["history"])
 
 
 @router.get("/history")
-async def list_history(limit: int = 20):
-    """查询最近的申报记录
+async def list_history(page: int = 1, page_size: int = 20):
+    """查询申报记录（分页）
 
-    :param limit: 返回条数上限
+    :param page: 页码，从 1 开始
+    :param page_size: 每页条数，默认 20
     """
     async with async_session() as session:
+        # 总数
+        total = (await session.execute(select(func.count(Declaration.id)))).scalar() or 0
+
+        # 分页数据
+        offset = (page - 1) * page_size
         result = await session.execute(
             select(Declaration)
             .order_by(desc(Declaration.created_at))
-            .limit(limit)
+            .offset(offset)
+            .limit(page_size)
         )
         rows = result.scalars().all()
-        return [
+        items = [
             {
                 "id": r.id,
                 "request_id": r.request_id,
@@ -39,6 +46,8 @@ async def list_history(limit: int = 20):
             }
             for r in rows
         ]
+
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
 @router.delete("/history/{record_id}")

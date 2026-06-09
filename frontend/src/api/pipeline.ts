@@ -1,13 +1,15 @@
 import client from './client'
-import type { Commodity, DeclarationDoc } from '@/types'
+import type { Commodity, PipelineFullResponse } from '@/types'
 
 export async function runFullPipeline(
   commodity: Commodity,
   targetCountry: string = 'US',
-): Promise<DeclarationDoc> {
-  const { data } = await client.post<DeclarationDoc>(
+  signal?: AbortSignal,
+): Promise<PipelineFullResponse> {
+  const { data } = await client.post<PipelineFullResponse>(
     `/pipeline/full?target_country=${targetCountry}`,
     commodity,
+    { timeout: 300000, signal },
   )
   return data
 }

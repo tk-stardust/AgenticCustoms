@@ -1,6 +1,4 @@
-"""申报文件生成智能体——汇总结果 + 生成申报文件 + 交叉校验"""
-
-import json
+"""申报文件生成智能体——代码组装数据 + LLM 生成文案 + 交叉校验"""
 
 from domain.commodity import Commodity
 from domain.hs_code import HsCodeResult
@@ -16,11 +14,11 @@ logger = get_logger(__name__)
 
 
 def _normalize_hs(code: str) -> str:
-    """归一化 HS 编码——去点后取前6位国际通用码，消除 8518.22 / 85182200 / 851822 格式差异"""
-    return code.replace(".", "").strip()[:6]
+    """归一化 HS 编码——去点后取前6位国际通用码"""
+    return str(code).replace(".", "").strip()[:6]
 
 
-DOC_PROMPT = """你是一名外贸报关专员。根据归类、关税、合规、原产地分析结果，用纯中文（字段名和内容均为中文）生成一套完整的申报文件，并做交叉校验。
+COMPLIANCE_PROMPT = """你是一名外贸报关专员。根据以下分析结果，用纯中文撰写一份合规声明文本（200-500字）。
 
 ## 商品信息
 名称：{name}
@@ -30,44 +28,20 @@ DOC_PROMPT = """你是一名外贸报关专员。根据归类、关税、合规�
 
 ## 分析结果
 - HS编码：{hs_code}（{hs_desc}，置信度 {confidence}%）
-- 关税：综合税率 {tariff_rate}%，FTA 优惠 {fta_applied}
-- 合规：风险等级 {risk_level}，{violations}
+- 关税：综合税率 {tariff_rate}%，FTA {fta_applied}
+- 合规：风险等级 {risk_level}
+- 违规项：{violations}
 - 原产地：{origin}
 
-## 输出格式（严格JSON，字段名用英文供程序解析，内容用中文）
-```json
-{{
-  "customs_declaration": {{
-    "commodity_name": "{name}",
-    "hs_code": "{hs_code}",
-    "origin": "中国",
-    "quantity": {quantity},
-    "unit": "件",
-    "declared_value": {value},
-    "total_tax_rate": {tariff_rate}
-  }},
-  "origin_certificate": {{
-    "exporter": "待填写",
-    "hs_code": "{hs_code}",
-    "origin_criteria": "RVC40",
-    "fta": "{fta_text}"
-  }},
-  "compliance_statement": "经核查，本票货物在禁运清单、制裁名单、许可证要求、环保合规方面检查结果如下：{check_items}",
-  "cross_check_passed": true,
-  "cross_check_errors": []
-}}
-```
-
-**规则**：
-1. JSON 字段名用英文（commodity_name, hs_code 等），内容用中文
-2. 依据数量({quantity}件)和申报总价值({value}元)计算税费估算金额 = 总价值 × 综合税率
-3. 如任何分析结果缺失或为空，在 compliance_statement 中明确标注"未查到"而非跳过
-4. 关税税率与关税计算结果一致
-如有矛盾，cross_check_passed 记为 false 并在 cross_check_errors 中列出。"""
+## 要求
+1. 纯文本，无 JSON，无代码块
+2. 逐项陈述：制裁清单校验、出口管制、许可证要求、环保合规
+3. 如有违规项，明确标注严重程度和建议措施
+4. 如某类校验不适用，标注"不适用"而非跳过"""
 
 
 class DocGeneratorAgent(BaseAgent[DeclarationDoc]):
-    """申报文件生成智能体"""
+    """申报文件生成智能体——代码组装结构化数据，LLM 只生成文案"""
 
     async def run(
         self,
@@ -77,62 +51,85 @@ class DocGeneratorAgent(BaseAgent[DeclarationDoc]):
         compliance_result: ComplianceResult,
         origin_result: OriginResult,
     ) -> DeclarationDoc:
-        """生成申报文件并交叉校验
-
-        :param commodity: 商品实体
-        :param hs_result: HS 归类结果
-        :param tariff_result: 关税计算结果
-        :param compliance_result: 合规校验结果
-        :param origin_result: 原产地匹配结果
-        """
         logger.info("doc_gen.start", name=commodity.name)
 
+        # 1. 代码组装 customs_declaration（不经过 LLM）
+        tariff_items = [
+            {"name": item.name, "rate": item.rate, "amount": item.amount, "note": item.note}
+            for item in (tariff_result.items or [])
+        ]
+        customs_declaration = {
+            "commodity_name": commodity.name,
+            "hs_code": hs_result.code,
+            "description": hs_result.description,
+            "chapter": hs_result.code[:2],
+            "heading": hs_result.code[:4],
+            "origin": origin_result.recommended_origin or "CN",
+            "quantity": commodity.quantity,
+            "unit": "件",
+            "declared_value": commodity.declared_value,
+            "tariff_items": tariff_items,
+            "total_tax_rate": tariff_result.total_rate,
+            "total_tax_amount": tariff_result.total_amount,
+            "fta_applied": tariff_result.fta_applied,
+            "fta_saving": tariff_result.fta_saving,
+        }
+
+        # 2. 代码组装 origin_certificate（不经过 LLM）
+        origin_certificate = {
+            "hs_code": hs_result.code,
+            "exporter": "待填写",
+            "origin_country": origin_result.recommended_origin or "CN",
+            "destination_country": tariff_result.country,
+            "fta": tariff_result.fta_applied or "不适用",
+            "origin_criteria": ", ".join(origin_result.meeting_criteria) if origin_result.meeting_criteria else "—",
+            "rvc_percentage": origin_result.rvc_percentage,
+            "note": origin_result.note,
+        }
+
+        # 3. LLM 只生成 compliance_statement 文案
+        violations_text = (
+            ", ".join(f"{v.category}:{v.description}" for v in compliance_result.violations)
+            if compliance_result.violations
+            else "无违规"
+        )
         origin_text = (
             f"推荐原产地 {origin_result.recommended_origin or 'CN'}，"
             f"适用 {', '.join(origin_result.applicable_ftas) or '无 FTA'}，"
             f"满足 {', '.join(origin_result.meeting_criteria) or '—'}"
         )
-
-        prompt = DOC_PROMPT.format(
+        prompt = COMPLIANCE_PROMPT.format(
             name=commodity.name,
             description=commodity.description,
             quantity=commodity.quantity,
             value=commodity.declared_value,
             hs_code=hs_result.code,
             hs_desc=hs_result.description,
-            confidence=hs_result.confidence,
+            confidence=int(hs_result.confidence * 100),
             tariff_rate=tariff_result.total_rate,
             fta_applied=tariff_result.fta_applied or "无",
-            fta_text=tariff_result.fta_applied or "不适用",
-            check_items=compliance_result.summary,
             risk_level=compliance_result.risk_level.value,
-            violations=f"违规 {len(compliance_result.violations)} 项" if compliance_result.violations else "无违规",
+            violations=violations_text,
             origin=origin_text,
         )
         messages = [{"role": "user", "content": prompt}]
-        response = await chat(messages, temperature=0.1, max_tokens=1024)
-
-        result = self._parse_response(response)
-        result = self._cross_validate(result, hs_result, tariff_result, compliance_result)
-        logger.info("doc_gen.done", cross_ok=result.cross_check_passed)
-        return result
-
-    def _parse_response(self, response: str) -> DeclarationDoc:
-        text = response.strip()
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0]
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0]
         try:
-            data = json.loads(text)
-        except json.JSONDecodeError:
-            return DeclarationDoc(
-                customs_declaration={},
-                compliance_statement="LLM 响应解析失败",
-                cross_check_passed=False,
-                cross_check_errors=["LLM 输出非 JSON 格式"],
-            )
-        return DeclarationDoc(**data)
+            compliance_statement = (await chat(messages, temperature=0.3, max_tokens=1024)).strip()
+        except Exception:
+            logger.warning("doc_gen.llm_failed")
+            compliance_statement = compliance_result.summary or "合规声明生成失败，请参考合规校验结果。"
+
+        # 4. 代码层交叉校验（不依赖 LLM 自述）
+        doc = DeclarationDoc(
+            customs_declaration=customs_declaration,
+            origin_certificate=origin_certificate,
+            compliance_statement=compliance_statement,
+            cross_check_passed=True,
+            cross_check_errors=[],
+        )
+        doc = self._cross_validate(doc, hs_result, tariff_result, compliance_result)
+        logger.info("doc_gen.done", cross_ok=doc.cross_check_passed)
+        return doc
 
     def _cross_validate(
         self,
@@ -141,13 +138,13 @@ class DocGeneratorAgent(BaseAgent[DeclarationDoc]):
         tariff: TariffResult,
         compliance: ComplianceResult,
     ) -> DeclarationDoc:
-        """验证申报文件与各分析结果的一致性"""
-        errors = list(doc.cross_check_errors or [])
+        """验证申报文件与各分析结果的一致性——代码层直接比对"""
+        errors: list[str] = []
 
-        # HS 编码一致性——归一化后比较前6位，兼容 851822 / 8518.22 / 85182200 等格式
-        decl_hs = doc.customs_declaration.get("hs_code", "")
-        if decl_hs and _normalize_hs(str(decl_hs)) != _normalize_hs(hs.code):
-            errors.append(f"报关单HS编码 {decl_hs} 与归类结果 {hs.code} 不一致")
+        cd = doc.customs_declaration
+        # HS 编码一致性
+        if cd.get("hs_code") and _normalize_hs(str(cd["hs_code"])) != _normalize_hs(hs.code):
+            errors.append(f"HS编码不一致：报关单 {cd['hs_code']} vs 归类结果 {hs.code}")
 
         # 原产地证书 HS 一致性
         if doc.origin_certificate:
@@ -155,10 +152,15 @@ class DocGeneratorAgent(BaseAgent[DeclarationDoc]):
             if cert_hs and _normalize_hs(str(cert_hs)) != _normalize_hs(hs.code):
                 errors.append(f"原产地证书HS编码 {cert_hs} 与归类结果 {hs.code} 不一致")
 
-        # 税率一致性
-        decl_tax = doc.customs_declaration.get("total_tax_rate", 0)
-        if isinstance(decl_tax, (int, float)) and abs(decl_tax - tariff.total_rate) > 1.0:
+        # 税率一致性（代码填入，理论上永远一致；保留作为防御性校验）
+        decl_tax = cd.get("total_tax_rate", 0)
+        if isinstance(decl_tax, (int, float)) and abs(decl_tax - tariff.total_rate) > 0.01:
             errors.append(f"报关单综合税率 {decl_tax}% 与计算结果 {tariff.total_rate}% 不一致")
+
+        # 金额校验
+        if tariff.total_amount is not None and cd.get("total_tax_amount") is not None:
+            if abs(float(cd["total_tax_amount"]) - tariff.total_amount) > 0.01:
+                errors.append(f"报关单税费金额 {cd['total_tax_amount']} 与计算结果 {tariff.total_amount} 不一致")
 
         doc.cross_check_errors = errors
         doc.cross_check_passed = len(errors) == 0

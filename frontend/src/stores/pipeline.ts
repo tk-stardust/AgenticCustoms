@@ -9,6 +9,7 @@ import type {
   DeclarationDoc,
   PipelineStep,
   StepError,
+  PipelineFullResponse,
 } from '@/types'
 import { classifyCommodity } from '@/api/classify'
 import { runFullPipeline } from '@/api/pipeline'
@@ -46,16 +47,19 @@ export const usePipelineStore = defineStore('pipeline', () => {
     }
   }
 
-  async function runPipeline(commodityInput: Commodity, country: string) {
+  async function runPipeline(commodityInput: Commodity, country: string, signal?: AbortSignal) {
     commodity.value = commodityInput
     targetCountry.value = country
     currentStep.value = 'classifying'
     loading.value = true
     errors.value = []
     try {
-      const result = await runFullPipeline(commodityInput, country)
-      documents.value = result
-      // 从 documents 中提取各 Agent 结果用于展示
+      const res: PipelineFullResponse = await runFullPipeline(commodityInput, country, signal)
+      requestId.value = res.request_id
+      documents.value = res.documents
+      tariffResult.value = res.tariff_result
+      complianceResult.value = res.compliance_result
+      originResult.value = res.origin_result
       currentStep.value = 'done'
     } catch (e: unknown) {
       errors.value.push({ step: 'pipeline', message: (e as Error).message })

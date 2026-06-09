@@ -51,9 +51,11 @@ async def test_classify_requires_fields(client):
 @pytest.mark.asyncio
 async def test_history_returns_list(client, mock_db):
     with patch("api.routes.history.async_session", return_value=mock_db):
-        resp = await client.get("/api/history?limit=5")
+        resp = await client.get("/api/history?page=1&page_size=5")
         assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+        data = resp.json()
+        assert "items" in data and "total" in data
+        assert isinstance(data["items"], list)
 
 
 @pytest.mark.asyncio
