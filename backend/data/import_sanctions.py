@@ -7,6 +7,8 @@
 import asyncio
 import xml.etree.ElementTree as ET
 
+from sqlalchemy import select as _select
+
 from data.db.database import async_session
 from data.db.models import SanctionEntry
 from shared.logger import get_logger
@@ -25,6 +27,9 @@ async def import_sanctions(limit: int = 200):
 
     count = 0
     async with async_session() as session:
+        existing = await session.execute(_select(SanctionEntry.entity_name))
+        existing_names = set(existing.scalars().all())
+
         for entity in list(entities_el):
             try:
                 names_el = entity.find(f"{{{NS}}}names")
@@ -53,6 +58,10 @@ async def import_sanctions(limit: int = 200):
                     country = c.text.strip() if c is not None and c.text else ""
             except (AttributeError, IndexError):
                 continue
+
+            if name in existing_names:
+                continue
+            existing_names.add(name)
 
             session.add(SanctionEntry(
                 entity_name=name,

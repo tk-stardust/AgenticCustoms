@@ -5,9 +5,9 @@ import { usePipelineStore } from '@/stores/pipeline'
 import type { Commodity } from '@/types'
 import { Check, Loading, Camera } from '@element-plus/icons-vue'
 import { ocrImage } from '@/api/ocr'
+import { runPipelineSSE } from '@/api/pipeline'
 
 const store = usePipelineStore()
-let runTimer: ReturnType<typeof setInterval> | null = null
 let abortCtrl: AbortController | null = null
 const emptyPipeline = (): Commodity => ({ name: '', description: '', material: '', function: '', usage: '' })
 const saved = localStorage.getItem("pipelineForm")
@@ -16,7 +16,6 @@ const country = ref(store.targetCountry)
 
 // 切页离开（keep-alive 缓存）：停动画 + 存表单
 onDeactivated(() => {
-  if (runTimer) { clearInterval(runTimer); runTimer = null }
   if (abortCtrl) { abortCtrl.abort(); abortCtrl = null }
   if (form.value.name) localStorage.setItem("pipelineForm", JSON.stringify(form.value))
   else localStorage.removeItem("pipelineForm")
@@ -39,14 +38,7 @@ onMounted(() => {
 })
 // keep-alive 切回来：重启动画，或同步已完成的 store 结果
 onActivated(() => {
-  if (phase.value === 'running') {
-    runTimer = setInterval(() => {
-      if (agentPhase.value < agents.length - 1) {
-        agentPhase.value++
-        activePhase.value = agentPhase.value
-      }
-    }, 8000)
-  }
+  // keep-alive 切回来：如果 SSE 已完成，同步结果状态
   if (store.documents && phase.value !== 'done') {
     phase.value = 'done'
     activePhase.value = steps.length - 1
@@ -98,6 +90,16 @@ const materialTags = ref<string[]>([])
 const materialInput = ref('')
 const ocrLoading = ref(false)
 
+// 同票多商品项
+interface CommodityRow { name: string; hs_code: string; quantity: number; declared_value: number }
+const commodityRows = ref<CommodityRow[]>([])
+function addRow() {
+  commodityRows.value.push({ name: '', hs_code: '', quantity: 1, declared_value: 0 })
+}
+function removeRow(idx: number) {
+  commodityRows.value.splice(idx, 1)
+}
+
 async function onUpload(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   if (!file) return
@@ -135,6 +137,7 @@ function removeTag(idx: number) {
 function clearForm() {
   form.value = emptyPipeline()
   materialTags.value = []
+  commodityRows.value = []
   localStorage.removeItem("pipelineForm")
 }
 function clearResult() {
@@ -145,34 +148,46 @@ function clearResult() {
 async function onSubmit() {
   if (!form.value.name.trim()) { ElMessage.warning('请输入商品名称'); return }
   if (!form.value.description.trim()) { ElMessage.warning('请输入商品描述'); return }
-  phase.value = 'running'; activePhase.value = 0; agentPhase.value = 0
+  phase.value = 'running'; activePhase.value = 0; agentPhase.value = -1
   abortCtrl = new AbortController()
-  runTimer = setInterval(() => {
-    if (agentPhase.value < agents.length - 1) {
-      agentPhase.value++
-      activePhase.value = agentPhase.value
-    }
-  }, 8000)
   try {
-    await store.runPipeline({ ...form.value }, country.value, abortCtrl.signal)
-  } catch {
-    // cancelled by user or already in store.errors
-  }
-  if (runTimer) { clearInterval(runTimer); runTimer = null }
-  abortCtrl = null
-  // 只有正常完成才显示结果；取消时 phase 保持 running 不变
-  if (store.documents) {
+    const res = await runPipelineSSE(
+      { ...form.value },
+      country.value,
+      (event, data) => {
+        if (event === 'progress' && typeof data.agent === 'number') {
+          agentPhase.value = data.agent
+          activePhase.value = data.agent
+          if (data.message && typeof data.message === 'string') {
+            logs[data.agent] = data.message
+          }
+        }
+      },
+      abortCtrl.signal,
+    )
+    store.requestId = res.request_id as string
+    store.documents = res.documents as any
+    store.tariffResult = res.tariff_result as any
+    store.complianceResult = res.compliance_result as any
+    store.originResult = res.origin_result as any
+    store.loading = false
     activePhase.value = steps.length - 1
     agentPhase.value = agents.length - 1
     phase.value = 'done'
+  } catch (e: unknown) {
+    if ((e as Error).name === 'AbortError') {
+      phase.value = 'idle'
+      ElMessage.info('已取消分析')
+    } else {
+      store.errors.push({ step: 'pipeline', message: (e as Error).message })
+      phase.value = 'done'
+    }
   }
+  abortCtrl = null
 }
 
 function cancelPipeline() {
   if (abortCtrl) { abortCtrl.abort(); abortCtrl = null }
-  if (runTimer) { clearInterval(runTimer); runTimer = null }
-  phase.value = 'idle'
-  ElMessage.info('已取消分析')
 }
 
 function agentState(i: number) {
@@ -185,6 +200,9 @@ function agentState(i: number) {
 function downloadReport() {
   const rid = store.documents?.request_id
   if (rid) window.open(`/api/pipeline/report/${rid}`, '_blank')
+}
+function printDocument() {
+  window.print()
 }
 const showReport = computed(() => phase.value === 'done' && !!store.documents)
 </script>
@@ -281,6 +299,19 @@ const showReport = computed(() => phase.value === 'done' && !!store.documents)
             </el-col>
           </el-row>
 
+
+          <!-- 同票多商品项 -->
+          <el-divider v-if="commodityRows.length" content-position="left">附加商品项（同票）</el-divider>
+          <div v-for="(row, idx) in commodityRows" :key="idx" class="commodity-row">
+            <el-row :gutter="8">
+              <el-col :span="6"><el-input v-model="row.name" placeholder="商品名称" size="small" clearable/></el-col>
+              <el-col :span="4"><el-input v-model="row.hs_code" placeholder="HS编码" size="small" clearable/></el-col>
+              <el-col :span="3"><el-input-number v-model="row.quantity" :min="1" size="small" style="width:100%"/></el-col>
+              <el-col :span="3"><el-input-number v-model="row.declared_value" :min="0" :precision="2" size="small" style="width:100%"/></el-col>
+              <el-col :span="2"><el-button size="small" type="danger" plain @click="removeRow(idx)">✕</el-button></el-col>
+            </el-row>
+          </div>
+          <el-button size="small" type="primary" plain @click="addRow()" style="margin-top:8px">+ 添加商品</el-button>
 
           <button v-if="phase !== 'running'" type="button" class="btn-start" @click="onSubmit">
             ⚡ 开始全流程分析
@@ -547,7 +578,8 @@ const showReport = computed(() => phase.value === 'done' && !!store.documents)
 
       <template #footer>
         <el-button @click="showPreview = false">关闭</el-button>
-        <el-button type="primary" @click="downloadReport">下载</el-button>
+        <el-button @click="printDocument()">🖨️ 打印 / PDF</el-button>
+        <el-button type="primary" @click="downloadReport">下载 HTML</el-button>
       </template>
     </el-dialog>
   </div>
@@ -602,6 +634,7 @@ const showReport = computed(() => phase.value === 'done' && !!store.documents)
 .ocr-btn { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; cursor: pointer; color: #94a3b8; transition: all .2s; flex-shrink: 0; }
 .ocr-btn:hover { border-color: #0d9488; color: #0d9488; }
 .ocr-btn.loading { opacity: .6; pointer-events: none; }
+.commodity-row { padding: 8px; margin-bottom: 4px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }
 :deep(.el-row) { align-items: flex-start; }
 :deep(.custom-input .el-input__wrapper) {
   height: 44px; border-radius: 10px;
@@ -796,4 +829,14 @@ const showReport = computed(() => phase.value === 'done' && !!store.documents)
 .compliance-hero.yellow { background: #f59e0b; color: #fff; }
 .compliance-hero.green { background: #10b981; color: #fff; }
 .compliance-hero h2 { margin: 0; font-size: 18px; }
+
+/* ===== 打印样式（浏览器 Ctrl+P → 另存为 PDF） ===== */
+@media print {
+  body > * { display: none !important; }
+  .el-dialog__wrapper { position: static !important; display: block !important; }
+  .el-dialog { position: static !important; margin: 0 !important; max-width: none !important; width: auto !important; box-shadow: none !important; }
+  .el-dialog__body { padding: 0 !important; background: #fff !important; }
+  .el-dialog__header, .el-dialog__footer { display: none !important; }
+  .a4-doc { box-shadow: none !important; padding: 20px !important; max-width: none !important; }
+}
 </style>

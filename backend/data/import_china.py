@@ -66,22 +66,28 @@ async def import_china(limit: int = 500):
 
     logger.info("import.china.parsed", count=len(items))
 
-    # MySQL
+    # MySQL — 去重插入
     async with async_session() as session:
-        for item in items:
+        from sqlalchemy import select as _select
+        existing = await session.execute(_select(HsCode.code))
+        existing_codes = set(existing.scalars().all())
+        new_items = [it for it in items if it["code"] not in existing_codes]
+        for item in new_items:
             session.add(HsCode(**item))
         await session.commit()
+        logger.info("import.china.mysql", new=len(new_items), skipped=len(items)-len(new_items))
 
-    # Chroma
-    collection = get_collection()
-    for item in items:
-        doc = f"HS编码 {item['code']}：{item['description']}，第{item['chapter']}章，进口关税 {item['base_rate']}%，增值税 {item['vat_rate']}%"
-        collection.add(
-            ids=[item["code"]],
-            documents=[doc],
-            metadatas=[{"code": item["code"], "chapter": item["chapter"], "heading": item["heading"], "base_rate": item["base_rate"]}],
-            embeddings=embed_texts([doc]),
-        )
+    # Chroma — 只嵌入新增数据
+    if new_items:
+        collection = get_collection()
+        for item in new_items:
+            doc = f"HS编码 {item['code']}：{item['description']}，第{item['chapter']}章，进口关税 {item['base_rate']}%，增值税 {item['vat_rate']}%"
+            collection.add(
+                ids=[item["code"]],
+                documents=[doc],
+                metadatas=[{"code": item["code"], "chapter": item["chapter"], "heading": item["heading"], "base_rate": item["base_rate"]}],
+                embeddings=embed_texts([doc]),
+            )
 
     logger.info("import.china.done", count=len(items))
 

@@ -66,6 +66,14 @@ const confidenceType = computed(()=>{
   const c = store.hsResult.confidence
   return c>=0.9?'success':c>=0.7?'warning':'danger'
 })
+function highlightCitation(text: string): string {
+  return text
+    .replace(/WCO/g, '<mark>WCO</mark>')
+    .replace(/HS公约/g, '<mark>HS公约</mark>')
+    .replace(/第(\d+)章/g, '<mark>第$1章</mark>')
+    .replace(/品目\s*(\d+\.?\d*)/g, '<mark>品目 $1</mark>')
+    .replace(/注释\s*[一二三四五六七八九十]/g, '<mark>$&</mark>')
+}
 const showManual=ref(false); const manualHs=ref('')
 async function copyCode(){ if(!store.hsResult) return; await navigator.clipboard.writeText(store.hsResult.code) }
 const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 章...','匹配历史归类案例...','LLM 推理合成中...']
@@ -170,7 +178,7 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
           </el-collapse>
           <el-collapse v-if="store.hsResult.citations.length" class="reasoning-collapse">
             <el-collapse-item title="条文溯源" name="citations">
-              <div v-for="(c,i) in store.hsResult.citations" :key="i" class="citation-card" :style="{animationDelay:`${i*.08}s`}">{{ c }}</div>
+              <div v-for="(c,i) in store.hsResult.citations" :key="i" class="citation-card" :style="{animationDelay:`${i*.08}s`}" v-html="highlightCitation(c)"></div>
             </el-collapse-item>
           </el-collapse>
           <div v-if="store.hsResult.alternatives.length" style="margin-top:12px">
@@ -283,6 +291,7 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
 :deep(.reasoning-collapse .el-collapse-item__header){font-size:14px;font-weight:500;color:#334155}
 .reasoning-list li{font-size:13px;color:#64748b;line-height:1.7;margin-bottom:6px;animation:fadeUp .3s cubic-bezier(.4,0,.2,1) both}
 .citation-card{padding:10px 14px;border-radius:8px;background:rgba(13,148,136,.04);font-size:13px;color:#475569;margin-bottom:6px;animation:fadeUp .25s cubic-bezier(.4,0,.2,1) both}
+.citation-card :deep(mark){background:rgba(245,158,11,.2);color:#b45309;padding:1px 4px;border-radius:3px;font-weight:600}
 .alt-title{font-size:13px;font-weight:600;color:#334155;margin-bottom:6px}
 .alt-row{display:flex;align-items:center;gap:8px;font-size:13px;color:#64748b;margin-bottom:4px}
 .alt-conf{color:#94a3b8;font-size:12px;margin-left:auto}
