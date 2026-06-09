@@ -254,6 +254,19 @@ docker compose up -d
 - [x] LLM 重试（chat + chat_vision，最多 2 次，指数退避）
 - [x] 输入框长度限制（名称/描述/功能/用途/材质/max）
 - [x] "清空表单" / "清除结果" 按钮分离
+- [x] ZIP 下载申报文件（后端 `GET /api/pipeline/download/{id}`，`zipfile` 打包三份 HTML）
+- [x] 美国 HTS 导入补全（FTA 优惠税率 / 反倾销字段，6 位编码覆盖）
+- [x] 关税税率 LIKE 前缀匹配修复 + `data_missing` 警告
+- [x] 税费明细 / 合规校验折叠展开
+- [x] 税费显示具体金额（`declared_value × rate`）
+- [x] 全局页面 max-width 1100 → 1400px
+- [x] 侧边栏折叠动画修复 + 图标居中 + 悬浮 tooltip
+- [x] 历史记录分页器全面重做（吸底 / 页码 / 每页条数 / 跳转）
+- [x] Dashboard 图表数据与表格数据分离（饼图用全量聚合，表格取最近 5 条）
+- [x] 国家名称本地化（US→美国，EU→欧盟 等）
+- [x] 清除结果同步重置顶部步骤条
+- [x] 历史记录默认每页 10 条
+- [x] 风险看板 → 历史记录筛选修复（sessionStorage 方案）
 
 ---
 
