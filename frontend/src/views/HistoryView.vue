@@ -1,19 +1,18 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { Search, Download } from '@element-plus/icons-vue'
+import { ref, computed, onMounted, onActivated, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { usePipelineStore } from '@/stores/pipeline'
 import client from '@/api/client'
 import { fetchHistory, type HistoryRecord } from '@/api/history'
 
 const router = useRouter()
-const route = useRoute()
 const pipelineStore = usePipelineStore()
 const allRecords = ref<HistoryRecord[]>([])
 const total = ref(0)
 const page = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(10)
 
 const reportVisible = ref(false)
 const reportHtml = ref('')
@@ -53,42 +52,80 @@ function rerun(row: HistoryRecord) {
 const loading = ref(false)
 const search = ref('')
 const filter = ref<'all'|'completed'|'pending'|'risk'>('all')
+const jumpPage = ref('')
+const tableScrollRef = ref<HTMLElement | null>(null)
+const showBackTop = ref(false)
+
+function scrollToTop() {
+  tableScrollRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
+}
+function onTableScroll() {
+  showBackTop.value = (tableScrollRef.value?.scrollTop || 0) > 200
+}
+
+const totalPages = computed(() => Math.ceil(total.value / pageSize.value))
+
+const pageNumbers = computed(() => {
+  const pages: (number | string)[] = []
+  const tp = totalPages.value
+  const cp = page.value
+  if (tp <= 7) { for (let i = 1; i <= tp; i++) pages.push(i); return pages }
+  pages.push(1)
+  if (cp > 3) pages.push('...')
+  const start = Math.max(2, cp - 1)
+  const end = Math.min(tp - 1, cp + 1)
+  for (let i = start; i <= end; i++) pages.push(i)
+  if (cp < tp - 2) pages.push('...')
+  pages.push(tp)
+  return pages
+})
+
+function goPage(p: number | string) {
+  if (typeof p === 'string') return
+  if (p < 1 || p > totalPages.value) return
+  page.value = p
+  load()
+}
+function jumpToPage() {
+  const n = parseInt(jumpPage.value)
+  if (n && n >= 1 && n <= totalPages.value) { goPage(n); jumpPage.value = '' }
+}
 
 async function load() {
-  if (route.query.filter === 'risk') filter.value = 'risk'
   loading.value = true
   try {
-    const data = await fetchHistory(page.value, pageSize.value)
+    const data = await fetchHistory(page.value, pageSize.value, search.value, filter.value)
     allRecords.value = data.items
     total.value = data.total
   }
   finally { loading.value = false }
 }
 
-function onPageChange(p: number) {
-  page.value = p
-  load()
-}
 function onPageSizeChange(s: number) {
   pageSize.value = s
   page.value = 1
   load()
 }
 
-onMounted(load)
+const FILTER_KEY = 'historyFilter'
 
-const filtered = computed(() => {
-  let list = allRecords.value
-  if (filter.value === 'completed') list = list.filter(r => r.status === 'completed')
-  else if (filter.value === 'pending') list = list.filter(r => r.status === 'pending')
-  else if (filter.value === 'risk') list = list.filter(r => r.results && !(r.results as any).cross_check_passed)
-  if (search.value) {
-    const q = search.value.toLowerCase()
-    list = list.filter(r => r.commodity_name?.toLowerCase().includes(q) || r.hs_code?.toLowerCase().includes(q))
-  }
-  return list
+function readStoredFilter() {
+  const q = sessionStorage.getItem(FILTER_KEY)
+  if (q === 'risk' || q === 'completed' || q === 'pending') { filter.value = q; load() }
+  sessionStorage.removeItem(FILTER_KEY)
+}
+
+onMounted(() => { readStoredFilter(); load() })
+// 筛选变化时重新加载 + 存 sessionStorage
+watch([filter, search], () => {
+  page.value = 1
+  sessionStorage.setItem(FILTER_KEY, filter.value)
+  load()
 })
+// keep-alive 切回来
+onActivated(readStoredFilter)
 
+const countryNames: Record<string, string> = { US: '🇺🇸 美国', EU: '🇪🇺 欧盟', VN: '🇻🇳 越南', CN: '🇨🇳 中国' }
 const statusMap: Record<string, { label: string; type: 'success'|'info'|'danger' }> = {
   completed: { label: '已完成', type: 'success' },
   pending: { label: '处理中', type: 'info' },
@@ -103,67 +140,85 @@ function statusLabel(r: HistoryRecord) { return statusMap[r.status]?.label || r.
   <div class="page-container">
     <div class="page-header"><h1>历史记录</h1></div>
 
-    <!-- 空状态 -->
-    <div v-if="allRecords.length===0 && !loading" class="empty-state">
+    <!-- 操作栏（始终显示） -->
+    <div class="toolbar">
+      <el-input v-model="search" placeholder="搜索商品名称 / HS编码" :prefix-icon="Search"
+        clearable style="width:280px" size="large" class="search-input"/>
+      <div class="filter-tabs">
+        <button v-for="f in [{k:'all',l:'全部'},{k:'completed',l:'已完成'},{k:'pending',l:'处理中'},{k:'risk',l:'有风险'}]"
+          :key="f.k" class="filter-btn" :class="{active:filter===f.k}" @click="filter=f.k as any">{{ f.l }}</button>
+      </div>
+      <div class="toolbar-actions">
+        <el-button size="large" @click="load">刷新</el-button>
+      </div>
+    </div>
+
+    <!-- 空状态：数据库真的没数据 -->
+    <div v-if="filter==='all' && total===0 && !loading" class="empty-state">
       <div class="empty-icon">📋</div>
       <h2>暂无数据</h2>
       <p class="empty-sub">您还没有申报记录</p>
-      <button class="btn-primary" @click="router.push('/classify')">开始首次申报</button>
+      <button class="btn-primary" @click="router.push('/pipeline')">开始首次申报</button>
     </div>
 
-    <template v-else>
-      <!-- 操作栏 -->
-      <div class="toolbar">
-        <el-input v-model="search" placeholder="搜索商品名称 / HS编码" :prefix-icon="Search"
-          clearable style="width:280px" size="large" class="search-input"/>
-        <div class="filter-tabs">
-          <button v-for="f in [{k:'all',l:'全部'},{k:'completed',l:'已完成'},{k:'pending',l:'处理中'},{k:'risk',l:'有风险'}]"
-            :key="f.k" class="filter-btn" :class="{active:filter===f.k}" @click="filter=f.k as any">{{ f.l }}</button>
-        </div>
-        <div class="toolbar-actions">
-          <el-button :icon="Download" size="large" @click="load">导出</el-button>
-          <el-button size="large" @click="load">刷新</el-button>
-        </div>
-      </div>
-
+    <!-- 有数据（或筛选后为空）时始终显示表格 + 分页器 -->
+    <template v-if="filter!=='all' || total>0">
       <!-- 表格 -->
       <div class="table-wrap">
-        <el-table :data="filtered" stripe v-loading="loading" style="width:100%">
-          <el-table-column prop="commodity_name" label="商品名称" min-width="160"/>
-          <el-table-column label="HS 编码" width="130">
-            <template #default="{ row }"><code>{{ row.hs_code || '—' }}</code></template>
-          </el-table-column>
-          <el-table-column label="目标国" width="100">
-            <template #default="{ row }"><el-tag size="small" round>{{ row.target_country }}</el-tag></template>
-          </el-table-column>
-          <el-table-column label="状态" width="100">
-            <template #default="{ row }">
-              <el-tag :type="statusType(row)" size="small" effect="dark" round>{{ statusLabel(row) }}</el-tag>
+        <div class="table-scroll" ref="tableScrollRef" @scroll="onTableScroll">
+          <el-table :data="allRecords" stripe v-loading="loading" style="width:100%" max-height="calc(100vh - 290px)">
+            <el-table-column prop="commodity_name" label="商品名称" min-width="160"/>
+            <el-table-column label="HS 编码" width="130">
+              <template #default="{ row }"><code>{{ row.hs_code || '—' }}</code></template>
+            </el-table-column>
+            <el-table-column label="目标国" width="100">
+              <template #default="{ row }"><el-tag size="small" round>{{ countryNames[row.target_country] || row.target_country }}</el-tag></template>
+            </el-table-column>
+            <el-table-column label="状态" width="100">
+              <template #default="{ row }">
+                <el-tag :type="statusType(row)" size="small" effect="dark" round>{{ statusLabel(row) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="时间" width="180">
+              <template #default="{ row }">
+                <span class="cell-time">{{ row.created_at?.replace('T',' ').substring(0,19) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="160">
+              <template #default="{ row }">
+                <el-button link type="primary" size="small" @click="viewReport(row)">查看详情</el-button>
+                <el-button link size="small" @click="rerun(row)">重新运行</el-button>
+                <el-button link size="small" class="btn-delete" @click="deleteRecord(row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+        <div class="history-pagination" v-if="total > 0">
+          <div class="pagination-left">
+            共 <b>{{ total }}</b> 条记录，第 <b>{{ page }}/{{ totalPages }}</b> 页
+          </div>
+          <div class="pagination-center">
+            <button class="page-btn" :disabled="page === 1" @click="goPage(1)" title="首页">«</button>
+            <button class="page-btn" :disabled="page === 1" @click="goPage(page - 1)" title="上一页">&lt;</button>
+            <template v-for="p in pageNumbers" :key="p">
+              <span v-if="p === '...'" class="page-ellipsis">...</span>
+              <button v-else class="page-btn" :class="{ active: p === page }" @click="goPage(p)">{{ p }}</button>
             </template>
-          </el-table-column>
-          <el-table-column label="时间" width="180">
-            <template #default="{ row }">
-              <span class="cell-time">{{ row.created_at?.replace('T',' ').substring(0,19) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="160">
-            <template #default="{ row }">
-              <el-button link type="primary" size="small" @click="viewReport(row)">查看详情</el-button>
-              <el-button link size="small" @click="rerun(row)">重新运行</el-button>
-              <el-button link size="small" class="btn-delete" @click="deleteRecord(row)">删除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <div class="pagination-wrap" v-if="total > pageSize">
-          <el-pagination
-            v-model:current-page="page"
-            v-model:page-size="pageSize"
-            :total="total"
-            :page-sizes="[10, 20, 50]"
-            layout="total, sizes, prev, pager, next"
-            @current-change="onPageChange"
-            @size-change="onPageSizeChange"
-          />
+            <button class="page-btn" :disabled="page === totalPages" @click="goPage(page + 1)" title="下一页">&gt;</button>
+            <button class="page-btn" :disabled="page === totalPages" @click="goPage(totalPages)" title="尾页">»</button>
+          </div>
+          <div class="pagination-right">
+            <span class="size-label">每页</span>
+            <el-select v-model="pageSize" @change="onPageSizeChange" size="small" class="size-select">
+              <el-option :value="10" label="10 条"/>
+              <el-option :value="20" label="20 条"/>
+              <el-option :value="50" label="50 条"/>
+              <el-option :value="100" label="100 条"/>
+            </el-select>
+            <span class="jump-label">前往</span>
+            <el-input v-model="jumpPage" size="small" class="jump-input" placeholder="页码" @keydown.enter="jumpToPage"/>
+            <span class="jump-label">页</span>
+          </div>
         </div>
       </div>
     </template>
@@ -174,6 +229,14 @@ function statusLabel(r: HistoryRecord) { return statusMap[r.status]?.label || r.
         <el-button @click="reportVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 回到顶部 -->
+    <transition name="fade">
+      <button v-if="showBackTop" class="back-top-btn" @click="scrollToTop" title="回到顶部">↑</button>
+    </transition>
+
+    <!-- 页脚 -->
+    <div class="page-footer">© 2026 AgenticCustoms</div>
   </div>
 </template>
 
@@ -198,10 +261,61 @@ function statusLabel(r: HistoryRecord) { return statusMap[r.status]?.label || r.
 .toolbar-actions{margin-left:auto;display:flex;gap:8px}
 
 /* 表格 */
-.table-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.page-container{padding-bottom:40px}
+.table-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04);display:flex;flex-direction:column}
+.table-scroll :deep(.el-scrollbar__thumb){background:#cbd5e1 !important}
+.table-scroll :deep(.el-scrollbar__thumb:hover){background:#94a3b8 !important}
 :deep(.el-table th){background:#f8fafc;color:#475569;font-weight:600;font-size:13px}
 :deep(.el-table tr:hover td){background:#f8fafc}
 code{font-family:'JetBrains Mono',monospace;font-size:13px}
 .cell-time{font-size:12px;color:#94a3b8}
 .btn-delete:hover{color:#ef4444 !important}
+
+/* ===== 自定义分页器 ===== */
+.history-pagination {
+  display: flex; align-items: center; justify-content: center; gap: 32px;
+  position: sticky; bottom: 0; z-index: 10;
+  background: rgba(255,255,255,.9); backdrop-filter: blur(8px);
+  border-top: 1px solid #e2e8f0;
+  box-shadow: 0 -4px 12px rgba(0,0,0,.04);
+  padding: 12px 24px;
+}
+.pagination-left { font-size: 14px; color: #64748b; }
+.pagination-left b { color: #1e293b; font-weight: 600; }
+
+.pagination-center { display: flex; align-items: center; gap: 4px; }
+.page-btn {
+  width: 36px; height: 36px; border-radius: 8px; border: 1px solid #e2e8f0;
+  background: #fff; color: #64748b; font-size: 14px; font-weight: 500;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  transition: all .15s; line-height: 1;
+}
+.page-btn:hover:not(:disabled):not(.active) { background: #f8fafc; color: #1e293b; }
+.page-btn.active { background: #0d9488; color: #fff; border-color: #0d9488; }
+.page-btn:disabled { opacity: .35; cursor: not-allowed; }
+.page-ellipsis { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 13px; }
+
+.pagination-right { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #64748b; }
+.size-select { width: 100px; }
+.size-select :deep(.el-input__wrapper) { border-radius: 8px; height: 36px; border-color: #e2e8f0; box-shadow: none; }
+.jump-input { width: 60px; }
+.jump-input :deep(.el-input__wrapper) { border-radius: 6px; height: 36px; border-color: #e2e8f0; box-shadow: none; padding: 0 8px; }
+.jump-input :deep(.el-input__inner) { font-size: 13px; }
+.jump-label { font-size: 13px; color: #64748b; }
+
+/* ===== 回到顶部 ===== */
+.back-top-btn {
+  position: fixed; right: 24px; bottom: 80px; z-index: 50;
+  width: 40px; height: 40px; border-radius: 50%;
+  background: #fff; border: 1px solid #e2e8f0; box-shadow: 0 2px 8px rgba(0,0,0,.08);
+  color: #0d9488; font-size: 18px; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .2s;
+}
+.back-top-btn:hover { box-shadow: 0 4px 16px rgba(0,0,0,.12); transform: translateY(-2px); }
+.fade-enter-active, .fade-leave-active { transition: opacity .25s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* ===== 页脚 ===== */
+.page-footer { text-align: center; padding: 16px; font-size: 12px; color: #94a3b8; }
 </style>

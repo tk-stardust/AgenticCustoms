@@ -60,19 +60,19 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- 底部统计卡片 -->
+    <!-- 底部统计卡片（实时数据） -->
     <div class="stat-cards">
       <div class="stat-card">
         <el-icon :size="20" color="#0d9488"><TrendCharts/></el-icon>
-        <div><b>12</b>件</div><span>今日归类</span>
+        <div><b>{{ dbStats.total }}</b>条</div><span>累计申报</span>
       </div>
       <div class="stat-card">
         <el-icon :size="20" color="#4f46e5"><Timer/></el-icon>
-        <div><b>340</b>分钟</div><span>本月节省时间</span>
+        <div><b>{{ dbStats.hs_codes }}</b>条</div><span>HS编码库</span>
       </div>
       <div class="stat-card">
         <el-icon :size="20" color="#22c55e"><Checked/></el-icon>
-        <div><b>99.2%</b></div><span>合规率</span>
+        <div><b>{{ dbStats.pass_rate }}%</b></div><span>合规通过率</span>
       </div>
     </div>
     <p class="copyright">© 2026 AgenticCustoms · 跨境合规贸易智能申报平台</p>

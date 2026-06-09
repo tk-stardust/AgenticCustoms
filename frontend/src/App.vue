@@ -7,6 +7,13 @@ const router = useRouter()
 const route = useRoute()
 const collapsed = ref(false)
 
+const menuItems = [
+  { path: '/', label: '首页', icon: House },
+  { path: '/classify', label: 'HS 归类', icon: Search },
+  { path: '/pipeline', label: '一键全流程', icon: Connection },
+  { path: '/dashboard', label: '风险看板', icon: DataAnalysis },
+  { path: '/history', label: '历史记录', icon: Clock },
+]
 const breadcrumbs: Record<string, string> = {
   '/': '首页',
   '/classify': 'HS 编码归类',
@@ -22,17 +29,15 @@ const breadcrumbs: Record<string, string> = {
     <el-aside :width="collapsed ? '64px' : '220px'" class="sidebar" style="flex-shrink:0">
       <div class="logo" :class="{ collapsed }">
         <img src="/favicon.png" class="logo-img" :class="{ small: collapsed }" />
-        <span v-if="!collapsed" class="logo-text">AgenticCustoms</span>
+        <span class="logo-text" :style="{ opacity: collapsed ? 0 : 1 }">AgenticCustoms</span>
       </div>
       <el-menu :default-active="route.path" :collapse="collapsed" @select="(path: string) => router.push(path)">
-        <el-menu-item index="/"><el-icon><House /></el-icon><span>首页</span></el-menu-item>
-        <el-menu-item index="/classify"><el-icon><Search /></el-icon><span>HS 归类</span></el-menu-item>
-        <el-menu-item index="/pipeline"><el-icon><Connection /></el-icon><span>一键全流程</span></el-menu-item>
-        <el-menu-item index="/dashboard"><el-icon><DataAnalysis /></el-icon><span>风险看板</span></el-menu-item>
-        <el-menu-item index="/history"><el-icon><Clock /></el-icon><span>历史记录</span></el-menu-item>
+        <el-tooltip v-for="item in menuItems" :key="item.path" :content="item.label" placement="right" :disabled="!collapsed">
+          <el-menu-item :index="item.path"><el-icon><component :is="item.icon" /></el-icon><span>{{ item.label }}</span></el-menu-item>
+        </el-tooltip>
       </el-menu>
-      <div class="sidebar-footer" v-if="!collapsed">
-        <div class="version-info">
+      <div class="sidebar-footer" :class="{ collapsed }">
+        <div class="version-info" v-show="!collapsed">
           <span class="breath-dot"></span><span>v1.0.0</span>
           <span class="sep">·</span><span class="powered">Agentic RAG</span>
         </div>
@@ -99,16 +104,27 @@ const breadcrumbs: Record<string, string> = {
   padding: 0 16px; border-bottom: 1px solid rgba(255,255,255,.06);
 }
 .logo.collapsed { justify-content: center; padding: 0; }
+.logo.collapsed .logo-text { opacity: 0; max-width: 0; }
 .logo-img { width: 28px; height: 28px; flex-shrink: 0; transition: all 0.25s; }
 .logo-img.small { width: 24px; height: 24px; }
 .logo-text { color: #fff; font-size: 15px; font-weight: 700; white-space: nowrap; letter-spacing: -.01em; }
 
-:deep(.el-menu) { border-right: none; background: transparent; padding: 8px 0; }
+:deep(.el-menu) { border-right: none; background: transparent; padding: 8px 0; overflow: hidden; white-space: nowrap; }
 :deep(.el-menu-item) {
   margin: 2px 12px; border-radius: 8px; height: 40px; line-height: 40px;
   font-size: var(--font-size-sm); color: #94a3b8;
   position: relative; overflow: hidden;
-  transition: color 0.2s, background 0.2s;
+  transition: color 0.2s, background 0.2s, margin 0.25s, padding 0.25s;
+}
+:deep(.el-menu--collapse .el-menu-item) {
+  justify-content: center; padding-left: 0 !important; padding-right: 0 !important;
+}
+:deep(.el-menu-item .el-icon) {
+  transition: transform 0.25s, margin 0.25s;
+  flex-shrink: 0;
+}
+:deep(.el-menu-item span) {
+  white-space: nowrap;
 }
 :deep(.el-menu-item .el-icon) { color: #64748b; transition: color 0.2s; }
 :deep(.el-menu-item:hover) { color: #e2e8f0; background: rgba(255,255,255,.04); }
@@ -122,12 +138,16 @@ const breadcrumbs: Record<string, string> = {
 }
 
 .sidebar-footer { padding: 12px 16px; margin-top: auto; border-top: 1px solid rgba(255,255,255,.04); }
+.sidebar-footer.collapsed { padding: 8px; }
+.sidebar-footer.collapsed .version-info { display: none; }
 .version-info { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #475569; }
 .breath-dot { width: 5px; height: 5px; border-radius: 50%; background: #0d9488; flex-shrink: 0; animation: breathe 3s ease-in-out infinite; }
 @keyframes breathe { 0%,100%{opacity:.4} 50%{opacity:1} }
 .sep { color: #334155; }
 .powered { color: #475569; }
-.collapse-btn { height: 36px; display: flex; align-items: center; justify-content: center; color: #475569; cursor: pointer; border-top: 1px solid rgba(255,255,255,.04); transition: color 0.2s; }
+.collapse-btn { height: 36px; display: flex; align-items: center; justify-content: center; color: #475569; cursor: pointer; border-top: 1px solid rgba(255,255,255,.04); transition: color 0.2s, transform 0.25s; }
+.collapse-btn:hover { color: #94a3b8; }
+.collapse-btn .el-icon { transition: transform 0.25s; }
 .collapse-btn:hover { color: #94a3b8; }
 
 /* 顶部栏 */

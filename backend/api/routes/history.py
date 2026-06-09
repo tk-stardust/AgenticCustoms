@@ -13,23 +13,52 @@ router = APIRouter(prefix="/api", tags=["history"])
 
 
 @router.get("/history")
-async def list_history(page: int = 1, page_size: int = 20):
-    """查询申报记录（分页）
+async def list_history(
+    page: int = 1,
+    page_size: int = 20,
+    search: str = "",
+    filter: str = "all",
+):
+    """查询申报记录（分页 + 筛选）
 
-    :param page: 页码，从 1 开始
-    :param page_size: 每页条数，默认 20
+    :param page: 页码
+    :param page_size: 每页条数
+    :param search: 搜索关键词（匹配商品名称/HS编码）
+    :param filter: 筛选类型 all/completed/pending/risk
     """
     async with async_session() as session:
-        # 总数
-        total = (await session.execute(select(func.count(Declaration.id)))).scalar() or 0
+        query = select(Declaration)
+        count_q = select(func.count(Declaration.id))
 
-        # 分页数据
+        # 筛选
+        if search:
+            kw = f"%{search}%"
+            query = query.where(
+                (Declaration.commodity_name.like(kw)) | (Declaration.hs_code.like(kw))
+            )
+            count_q = count_q.where(
+                (Declaration.commodity_name.like(kw)) | (Declaration.hs_code.like(kw))
+            )
+        if filter == "completed":
+            query = query.where(Declaration.status == "completed")
+            count_q = count_q.where(Declaration.status == "completed")
+        elif filter == "pending":
+            query = query.where(Declaration.status != "completed")
+            count_q = count_q.where(Declaration.status != "completed")
+        elif filter == "risk":
+            query = query.where(
+                Declaration.results != None,
+                func.json_extract(Declaration.results, "$.cross_check_passed") == False,
+            )
+            count_q = count_q.where(
+                Declaration.results != None,
+                func.json_extract(Declaration.results, "$.cross_check_passed") == False,
+            )
+
+        total = (await session.execute(count_q)).scalar() or 0
         offset = (page - 1) * page_size
         result = await session.execute(
-            select(Declaration)
-            .order_by(desc(Declaration.created_at))
-            .offset(offset)
-            .limit(page_size)
+            query.order_by(desc(Declaration.created_at)).offset(offset).limit(page_size)
         )
         rows = result.scalars().all()
         items = [

@@ -40,7 +40,7 @@ class TariffSchedule(Base):
     vat_rate = Column(Float, default=0.0)
     anti_dumping_rate = Column(Float, default=0.0)
     preferential_rate = Column(Float, nullable=True)
-    fta_name = Column(String(50), nullable=True)
+    fta_name = Column(String(200), nullable=True)
     notes = Column(Text, nullable=True)
     effective_from = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now())

@@ -1,4 +1,4 @@
-"""关税计算智能体——查税率表 + 试算综合税费"""
+"""关税计算智能体——查税率表 + LLM 分析税费"""
 
 from sqlalchemy import select
 
@@ -16,21 +16,25 @@ CALC_PROMPT = """你是一名外贸关税分析师。根据以下信息计算综
 ## 输入
 HS编码：{hs_code}
 目标国家：{country}
+货物数量：{quantity} 件
+申报总价值：{declared_value} 元
 
 ## 税率表数据
 {schedules}
 
 ## 要求
 1. 逐项列出：基础关税、增值税、反倾销税（如有）、FTA 优惠税率（如适用）
-2. 计算综合税率
-3. 如有 FTA 优惠，计算节省金额
+2. 每项计算金额 = 申报总价值 × 税率 ÷ 100（amount 字段填数值，不要 null）
+3. 综合税率 = 各项税率之和
+4. 如有 FTA 优惠，计算节省金额
+5. 如果申报价值为 0，amount 填 0，note 注明"未提供申报价值"
 
 ## 输出格式（严格JSON）
 ```json
 {{
   "items": [
-    {{"name": "基础关税", "rate": 5.0, "note": ""}},
-    {{"name": "增值税", "rate": 13.0, "note": ""}}
+    {{"name": "基础关税", "rate": 5.0, "amount": 500.0, "note": ""}},
+    {{"name": "增值税", "rate": 13.0, "amount": 1300.0, "note": ""}}
   ],
   "total_rate": 18.0,
   "fta_applied": null,
@@ -42,42 +46,42 @@ HS编码：{hs_code}
 class TariffCalculatorAgent(BaseAgent[TariffResult]):
     """关税与税费计算智能体"""
 
-    async def run(self, hs_code: str, country: str) -> TariffResult:
-        """根据 HS 编码和目标国计算综合税费
+    async def run(self, hs_code: str, country: str,
+                  declared_value: float = 0.0, quantity: int = 1) -> TariffResult:
+        logger.info("tariff.start", hs_code=hs_code, country=country,
+                    value=declared_value, qty=quantity)
 
-        :param hs_code: 前6位 HS 编码
-        :param country: 目标国家代码（US/EU/VN 等）
-        """
-        logger.info("tariff.start", hs_code=hs_code, country=country)
-
-        # 查询匹配的税率表（前缀匹配：如 hs_code=851822 → 匹配 hs_code_prefix=8518）
         async with async_session() as session:
             result = await session.execute(
                 select(TariffSchedule).where(
                     TariffSchedule.country == country,
-                    TariffSchedule.hs_code_prefix == hs_code[:4],
-                )
+                    TariffSchedule.hs_code_prefix.like(hs_code[:4] + "%"),
+                ).order_by(TariffSchedule.hs_code_prefix.desc())
             )
             rows = result.scalars().all()
 
         if not rows:
             logger.warning("tariff.no_data", country=country, hs_code=hs_code)
             return TariffResult(
-                hs_code=hs_code,
-                country=country,
-                items=[TariffItem(name="基础关税", rate=0.0, note="无税率数据")],
+                hs_code=hs_code, country=country,
+                items=[
+                    TariffItem(name="基础关税", rate=0.0, note="⚠ 未查到税率数据"),
+                    TariffItem(name="增值税", rate=0.0, note="⚠ 未查到税率数据"),
+                    TariffItem(name="反倾销税", rate=0.0, note="⚠ 未查到税率数据"),
+                ],
                 total_rate=0.0,
+                data_missing=True,
             )
 
-        # 格式化税率数据
         schedules = "\n".join(
             f"- {r.hs_code_prefix}: 基础{r.base_rate}% 增值税{r.vat_rate}% "
             f"反倾销{r.anti_dumping_rate}% FTA:{r.preferential_rate or '—'} ({r.fta_name or '—'})"
             for r in rows
         )
 
-        # LLM 分析与计算
-        prompt = CALC_PROMPT.format(hs_code=hs_code, country=country, schedules=schedules)
+        prompt = CALC_PROMPT.format(
+            hs_code=hs_code, country=country, schedules=schedules,
+            declared_value=declared_value, quantity=quantity)
         messages = [{"role": "user", "content": prompt}]
         response = await chat(messages, temperature=0.1, max_tokens=512)
 
@@ -97,7 +101,6 @@ class TariffCalculatorAgent(BaseAgent[TariffResult]):
         except json.JSONDecodeError:
             return TariffResult(hs_code=hs_code, country=country, items=[], total_rate=0.0)
         fta = data.get("fta_applied")
-        # LLM 有时返回 true/false 而非字符串/null，统一处理
         if isinstance(fta, bool) or fta is True or fta is False:
             fta = None
         return TariffResult(

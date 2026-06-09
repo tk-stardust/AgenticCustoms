@@ -20,3 +20,4 @@ class TariffResult(BaseModel):
     total_amount: float | None = Field(default=None, description="综合税额估算")
     fta_applied: str | None = Field(default=None, description="适用的FTA,如'RCEP'")
     fta_saving: float | None = Field(default=None, description="FTA优惠节省税额")
+    data_missing: bool = Field(default=False, description="是否缺失税率数据")

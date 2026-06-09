@@ -27,7 +27,12 @@ async def classify_node(state: PipelineState) -> dict:
 async def tariff_node(state: PipelineState) -> dict:
     """步骤2a：关税计算"""
     agent = TariffCalculatorAgent()
-    result = await agent.run(state["hs_result"].code, state["target_country"])
+    commodity = state["commodity"]
+    result = await agent.run(
+        state["hs_result"].code, state["target_country"],
+        declared_value=commodity.declared_value,
+        quantity=commodity.quantity,
+    )
     return {"tariff_result": result}
 
 
@@ -139,7 +144,9 @@ async def run_pipeline_stream(commodity, target_country: str) -> AsyncGenerator[
     compliance_agent = ComplianceCheckerAgent()
     origin_agent = OriginMatcherAgent()
     tariff_result, compliance_result, origin_result = await asyncio.gather(
-        tariff_agent.run(hs_result.code, target_country),
+        tariff_agent.run(hs_result.code, target_country,
+                          declared_value=commodity.declared_value,
+                          quantity=commodity.quantity),
         compliance_agent.run(commodity, hs_result.code, target_country),
         origin_agent.run(hs_result.code, target_country),
     )

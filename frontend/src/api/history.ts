@@ -19,7 +19,15 @@ export interface HistoryPage {
   page_size: number
 }
 
-export async function fetchHistory(page: number = 1, page_size: number = 20): Promise<HistoryPage> {
-  const { data } = await client.get<HistoryPage>(`/history?page=${page}&page_size=${page_size}`)
+export async function fetchHistory(
+  page: number = 1,
+  page_size: number = 20,
+  search: string = '',
+  filter: string = 'all',
+): Promise<HistoryPage> {
+  const params = new URLSearchParams({ page: String(page), page_size: String(page_size) })
+  if (search) params.set('search', search)
+  if (filter !== 'all') params.set('filter', filter)
+  const { data } = await client.get<HistoryPage>(`/history?${params.toString()}`)
   return data
 }

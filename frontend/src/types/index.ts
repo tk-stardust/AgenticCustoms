@@ -54,6 +54,7 @@ export interface TariffResult {
   total_amount?: number
   fta_applied?: string
   fta_saving?: number
+  data_missing?: boolean
 }
 
 export interface Violation {

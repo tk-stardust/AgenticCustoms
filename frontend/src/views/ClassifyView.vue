@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted, onDeactivated } from 'vue'
+import { ref, computed, onDeactivated } from 'vue'
 import { ElMessage } from 'element-plus'
 import { usePipelineStore } from '@/stores/pipeline'
 import type { Commodity } from '@/types'
@@ -8,21 +8,15 @@ import { ocrImage } from '@/api/ocr'
 
 const store = usePipelineStore()
 const emptyClassify = (): Commodity => ({ name:'',description:'',material:'',function:'',usage:'' })
-const saved = localStorage.getItem('classifyForm')
-const form = ref<Commodity>(saved && JSON.parse(saved).name ? JSON.parse(saved) : emptyClassify())
+const form = ref<Commodity>(emptyClassify())
 function clearForm() {
   form.value = emptyClassify()
-  localStorage.removeItem('classifyForm')
 }
 function clearResult() {
   store.reset()
 }
 onDeactivated(() => {
   if (stepTimer) { clearInterval(stepTimer); stepTimer = null }
-})
-onUnmounted(() => {
-  if (form.value.name) localStorage.setItem('classifyForm', JSON.stringify(form.value))
-  else localStorage.removeItem('classifyForm')
 })
 const loadingStep = ref(0)
 const ocrLoading = ref(false)

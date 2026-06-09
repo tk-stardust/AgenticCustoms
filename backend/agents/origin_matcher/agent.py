@@ -56,7 +56,7 @@ class OriginMatcherAgent(BaseAgent[OriginResult]):
             result = await session.execute(
                 select(TariffSchedule).where(
                     TariffSchedule.country == country,
-                    TariffSchedule.hs_code_prefix == hs_code[:4],
+                    TariffSchedule.hs_code_prefix.like(hs_code[:4] + "%"),
                     TariffSchedule.fta_name.isnot(None),
                 )
             )

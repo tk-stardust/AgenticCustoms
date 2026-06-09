@@ -13,12 +13,18 @@ use([PieChart, BarChart, TitleComponent, TooltipComponent, LegendComponent, Grid
 
 const router = useRouter()
 const records = ref<HistoryRecord[]>([])
-const stats = ref<DashboardStats>({ total: 0, pass_rate: 100, warnings: 0, hs_codes: 0 })
+const stats = ref<DashboardStats>({ total: 0, pass_rate: 100, warnings: 0, hs_codes: 0, by_country: [], by_risk: [] })
+const chartRecords = ref<HistoryRecord[]>([])
 const loading = ref(false)
 
 async function loadData() {
   loading.value = true
-  try { stats.value = await fetchStats(); const h = await fetchHistory(1, 50); records.value = h.items }
+  try {
+    stats.value = await fetchStats()
+    const h = await fetchHistory(1, 50)
+    chartRecords.value = h.items
+    records.value = h.items.slice(0, 5)
+  }
   finally { loading.value = false }
 }
 
@@ -30,8 +36,8 @@ const pieOption = computed(() => ({
   legend: { bottom: 0 },
   series: [{
     type: 'pie' as const, radius: ['45%', '72%'],
-    data: records.value.length
-      ? Object.entries(records.value.reduce((acc:Record<string,number>,r)=>{acc[r.target_country]=(acc[r.target_country]||0)+1;return acc},{})).map(([n,v])=>({name:n,value:v}))
+    data: stats.value.by_country?.length
+      ? stats.value.by_country.map(d => ({ name: d.country, value: d.count }))
       : [
         { name: '🇺🇸 美国', value: 45, itemStyle: { color: '#3b82f6' } },
         { name: '🇪🇺 欧盟', value: 30, itemStyle: { color: '#8b5cf6' } },
@@ -45,13 +51,13 @@ const pieOption = computed(() => ({
 const barOption = computed(() => ({
   title: { text: 'HS 章别统计 Top5', left: 'center', textStyle: { fontSize: 14, color: '#334155' } },
   tooltip: {},
-  xAxis: { type: 'category' as const, data: records.value.length
-    ? Object.entries(records.value.reduce((acc:Record<string,number>,r)=>{const p=r.hs_code?.substring(0,2)||'—';acc[p]=(acc[p]||0)+1;return acc},{})).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([n])=>`第${n}章`)
+  xAxis: { type: 'category' as const, data: chartRecords.value.length
+    ? Object.entries(chartRecords.value.reduce((acc:Record<string,number>,r)=>{const p=r.hs_code?.substring(0,2)||'—';acc[p]=(acc[p]||0)+1;return acc},{})).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([n])=>`第${n}章`)
     : ['84章(机械)', '85章(电子)', '62章(服装)', '94章(家具)', '87章(车辆)'],
     axisLabel: { fontSize: 11 } },
   yAxis: { type: 'value' as const },
-  series: [{ type: 'bar' as const, data: records.value.length
-    ? Object.entries(records.value.reduce((acc:Record<string,number>,r)=>{const p=r.hs_code?.substring(0,2)||'—';acc[p]=(acc[p]||0)+1;return acc},{})).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([,v])=>v)
+  series: [{ type: 'bar' as const, data: chartRecords.value.length
+    ? Object.entries(chartRecords.value.reduce((acc:Record<string,number>,r)=>{const p=r.hs_code?.substring(0,2)||'—';acc[p]=(acc[p]||0)+1;return acc},{})).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([,v])=>v)
     : [32, 28, 15, 12, 8],
     itemStyle: { borderRadius: [4,4,0,0], color: '#0d9488' } }],
 }))
@@ -65,10 +71,15 @@ const demoRecords: HistoryRecord[] = [
 ]
 function loadDemo() {
   demoMode.value = true
-  stats.value = { total: 86, pass_rate: 93.0, warnings: 7, hs_codes: 28 }
+  stats.value = { total: 86, pass_rate: 93.0, warnings: 7, hs_codes: 28, by_country: [], by_risk: [] }
   records.value = demoRecords
+  chartRecords.value = demoRecords
 }
 const demoMode = ref(false)
+function goRiskHistory() {
+  sessionStorage.setItem('historyFilter', 'risk')
+  router.push('/history')
+}
 </script>
 
 <template>
@@ -99,7 +110,7 @@ const demoMode = ref(false)
           <div class="stat-value">{{ stats.pass_rate }}%</div>
           <div class="progress-bar-sm"><div class="progress-fill-sm" :style="{ width: stats.pass_rate + '%' }"></div></div>
         </div>
-        <div class="stat-card" style="cursor:pointer" @click="router.push('/history?filter=risk')">
+        <div class="stat-card" style="cursor:pointer" @click="goRiskHistory()">
           <div class="stat-label">风险预警</div>
           <div class="stat-value">{{ stats.warnings }}</div>
           <el-tag type="danger" size="small" effect="dark">待处理</el-tag>
