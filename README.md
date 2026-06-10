@@ -302,20 +302,26 @@ docker compose up -d
 
 ---
 	
-### Phase 5 — AI 对话 + 关税独立（待开始）
+### Phase 5 — AI 对话 + 关税独立（已完成）
 
-- [ ] **关税计算独立页面**：将关税计算从 Pipeline 拆分，用户已知 HS 编码时无需跑全流程（60s）。页面仿 ClassifyView（左表单 + 右结果），后端新增 `POST /api/tariff`，复用已有 TariffCalculatorAgent
-- [ ] **AI 对话 ChatPanel 组件**：聊天气泡 + 输入框 + loading 动画，参考 Agent_Task 项目实现
-- [ ] **AI 对话悬浮抽屉**：右下角全局固定按钮，点击侧边滑出抽屉面板，在任何页面随时唤起不中断工作流
-- [ ] **AI 对话独立页面**：侧边栏新增"AI 助手"导航入口，全屏沉浸式使用
-- [ ] **AI 对话后端 `/api/chat` 端点**：复用 RAG + LLM 基础设施，意图路由分发
-- [ ] **AI 对话意图路由**：知识问答 → 直接回答；HS 归类/关税/合规 → 直接回答 + 可选跳转对应页面；申报文件 → 不直接回答，强引导跳转 Pipeline，用户拒绝则提示"该功能需在专用流程中完成，聊天暂不支持"；跳转携带上下文参数
-- [ ] **登录注册**（低优先级）：用户表 + JWT 认证 + 注册/登录/找回密码 + 历史记录按用户隔离 + 路由鉴权守卫
+- [x] **关税计算独立页面**：双模式（AI 自动归类 / 直接输入编码），上半分栏 + 下半全宽税费结果
+- [x] **AI 对话 ChatPanel 组件**：聊天气泡 + loading 动画 + 快捷提问 + 跳转确认
+- [x] **AI 对话悬浮抽屉**：右下角固定按钮 → 侧边滑出 el-drawer（420px）
+- [x] **AI 对话独立页面**：侧边栏"AI 助手"导航入口，全屏使用
+- [x] **AI 对话后端 ReAct agent**：LangGraph `create_react_agent`，4 个 tool，MemorySaver 多轮记忆
+- [x] **AI 对话后端 API**：`POST /api/chat` + `GET/DELETE /api/chat/history`，对话历史存 MySQL
+- [x] **登录注册**：JWT 认证 + bcrypt 密码哈希 + Pinia auth store + 路由守卫 + axios 拦截器。历史记录、聊天记录、Pipeline 申报按 user_id 隔离
 
-### Phase 6 — 功能完善（待开始）
+### Phase 5 — AI 对话 + 关税独立 ✅ 已完成
 
-- [ ] **历史归类案例复用**：HS 归类成功后自动写入 Chroma，后续检索命中历史案例提高准确率
-- [ ] **独立合规校验页面**：仿 ClassifyView 双栏布局（左表单 + 右结果）。左侧：商品名称/描述/材质/功能/目标国家 + "开始校验"按钮。右侧：综合风险等级色块（绿/黄/红）+ 违规项逐条列出（类别/描述/严重程度/法规来源，逐项打勾打叉）+ 许可证要求 + 制裁命中 + 合规结论文字总结。复用已有 ComplianceCheckerAgent，新增 `POST /api/compliance` 端点
+- [x] 关税计算独立页面、AI 对话（ChatPanel + 悬浮抽屉 + 独立页 + ReAct agent）、登录注册、修改密码、用户头像首字母
+- [x] AI 对话意图路由：独立意图分类 LLM（temp=0）+ 三层路由（skip_redirect → intent → Agent），Agent_Task 同款架构
+- [x] 对话跳转：意图分类主动建议 → 确认卡片；Agent 追问后用户说跳转 → 直接跳。q 参数传上下文
+
+### Phase 6 — 功能完善（进行中）
+
+- [x] **历史归类案例复用**：HS 归类成功自动写入 Chroma，rag.seed 改为清空重建（保留历史案例）
+- [x] **独立合规校验页面**：双栏布局，后端 `POST /api/compliance`，侧边栏"合规校验"导航
 - [ ] **端到端集成测试**：覆盖 Pipeline 全链路（归类 → 计税 → 合规 → 原产地 → 申报），验证五个 Agent 输出
 
 ### 暂缓（数据积累）

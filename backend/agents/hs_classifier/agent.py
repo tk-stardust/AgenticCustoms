@@ -1,11 +1,14 @@
 """HS 编码归类智能体——RAG 检索 + LLM 推理合成"""
 
 import json
+import uuid
 
 from domain.commodity import Commodity
 from domain.hs_code import HsCodeResult
 from agents.base import BaseAgent
 from rag.retriever import retrieve
+from rag.vector_store import get_collection
+from rag.embedding import embed_texts
 from shared.llm import chat
 from shared.logger import get_logger
 
@@ -86,6 +89,23 @@ class HsClassifierAgent(BaseAgent[HsCodeResult]):
         result = self._parse_response(response)
         self.validate_output(result)
         logger.info("hs_classifier.done", code=result.code, confidence=result.confidence)
+
+        # 归类成功 → 写入 Chroma，后续检索可命中历史案例
+        if result.confidence > 0.5 and result.code != "000000":
+            try:
+                doc = f"HS编码 {result.code}：{result.description}（{commodity.name}，{commodity.description}）"
+                col = get_collection()
+                import uuid
+                col.add(
+                    ids=[f"hist_{result.code}_{uuid.uuid4().hex[:6]}"],
+                    documents=[doc],
+                    metadatas=[{"code": result.code, "source": "history"}],
+                    embeddings=embed_texts([doc]),
+                )
+                logger.info("hs_classifier.cached", code=result.code)
+            except Exception as e:
+                logger.warning("hs_classifier.cache_failed", error=str(e))
+
         return result
 
     def _parse_response(self, response: str) -> HsCodeResult:

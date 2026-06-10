@@ -1,30 +1,70 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { House, Search, Connection, DataAnalysis, Clock, Fold, Expand, Bell } from '@element-plus/icons-vue'
+import { House, Search, Coin, Connection, DataAnalysis, Clock, Fold, Expand, ChatDotRound, Checked } from '@element-plus/icons-vue'
+import { useAuthStore } from '@/stores/auth'
+import ChatPanel from '@/components/ChatPanel.vue'
 
 const router = useRouter()
 const route = useRoute()
-const collapsed = ref(localStorage.getItem('sidebar-collapsed') === '1')
-watch(collapsed, (v) => localStorage.setItem('sidebar-collapsed', v ? '1' : '0'))
+import { ElMessage } from 'element-plus'
+import { changePassword } from '@/api/auth'
+
+const auth = useAuthStore()
+const collapsed = ref((() => { try { return localStorage.getItem('sidebar-collapsed') } catch { return null } })() === '1')
+watch(collapsed, (v) => { try { localStorage.setItem('sidebar-collapsed', v ? '1' : '0') } catch { /* ok */ } })
+const isGuest = computed(() => route.meta.guest === true)
+const showPwdDialog = ref(false)
+const pwdForm = ref({ old: '', newPwd: '', confirm: '' })
+const pwdLoading = ref(false)
+
+async function doChangePwd() {
+  if (!pwdForm.value.old || !pwdForm.value.newPwd) { ElMessage.warning('请填写完整'); return }
+  if (pwdForm.value.newPwd.length < 4) { ElMessage.warning('新密码至少 4 位'); return }
+  if (pwdForm.value.newPwd !== pwdForm.value.confirm) { ElMessage.warning('两次密码不一致'); return }
+  pwdLoading.value = true
+  try {
+    await changePassword(pwdForm.value.old, pwdForm.value.newPwd)
+    ElMessage.success('密码修改成功')
+    showPwdDialog.value = false
+    pwdForm.value = { old: '', newPwd: '', confirm: '' }
+  } catch (e: any) { ElMessage.error(e?.message || '修改失败') }
+  finally { pwdLoading.value = false }
+}
+
+function doLogout() {
+  auth.logout()
+  router.push('/login')
+}
+const chatDrawer = ref(false)
 
 const menuItems = [
   { path: '/', label: '首页', icon: House },
   { path: '/classify', label: 'HS 归类', icon: Search },
+  { path: '/tariff', label: '关税计算', icon: Coin },
+  { path: '/compliance', label: '合规校验', icon: Checked },
   { path: '/pipeline', label: '一键全流程', icon: Connection },
   { path: '/dashboard', label: '风险看板', icon: DataAnalysis },
   { path: '/history', label: '历史记录', icon: Clock },
+  { path: '/chat', label: 'AI 助手', icon: ChatDotRound },
 ]
 const breadcrumbs: Record<string, string> = {
   '/': '首页',
   '/classify': 'HS 编码归类',
+  '/tariff': '关税计算',
+  '/compliance': '合规校验',
   '/pipeline': '一键全流程',
   '/dashboard': '风险看板',
   '/history': '历史记录',
+  '/chat': 'AI 助手',
 }
 </script>
 
 <template>
+  <template v-if="isGuest">
+    <router-view />
+  </template>
+  <template v-else>
   <el-container style="height:100vh;overflow:hidden">
     <!-- 侧边栏 -->
     <el-aside :width="collapsed ? '64px' : '220px'" class="sidebar" :class="{ collapsed: collapsed }" style="flex-shrink:0">
@@ -63,15 +103,13 @@ const breadcrumbs: Record<string, string> = {
           </span>
         </div>
         <div class="topbar-right">
-          <el-badge :value="3" :max="99" class="bell-badge">
-            <el-icon :size="18" class="bell-icon"><Bell /></el-icon>
-          </el-badge>
           <el-dropdown trigger="click">
-            <span class="user-avatar">👤</span>
+            <span class="user-avatar">{{ auth.username ? auth.username[0].toUpperCase() : '👤' }}</span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item>个人设置</el-dropdown-item>
-                <el-dropdown-item>退出登录</el-dropdown-item>
+                <el-dropdown-item disabled>{{ auth.username }}</el-dropdown-item>
+                <el-dropdown-item @click="showPwdDialog = true">修改密码</el-dropdown-item>
+                <el-dropdown-item divided @click="doLogout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -90,6 +128,34 @@ const breadcrumbs: Record<string, string> = {
       </main>
     </div>
   </el-container>
+
+  <!-- AI 对话悬浮按钮 + 抽屉 -->
+  <div class="chat-float-btn" @click="chatDrawer = true">
+    <el-icon :size="22"><ChatDotRound /></el-icon>
+  </div>
+  <el-drawer v-model="chatDrawer" title="AI 助手" direction="rtl" size="420" :z-index="200" :body-style="{ padding: 0 }">
+    <ChatPanel />
+  </el-drawer>
+
+  <!-- 修改密码对话框 -->
+  <el-dialog v-model="showPwdDialog" title="修改密码" width="380px" :close-on-click-modal="false">
+    <el-form label-position="top" @submit.prevent="doChangePwd">
+      <el-form-item label="原密码">
+        <el-input v-model="pwdForm.old" type="password" show-password placeholder="请输入原密码" />
+      </el-form-item>
+      <el-form-item label="新密码">
+        <el-input v-model="pwdForm.newPwd" type="password" show-password placeholder="至少 4 位" />
+      </el-form-item>
+      <el-form-item label="确认新密码">
+        <el-input v-model="pwdForm.confirm" type="password" show-password placeholder="再次输入" @keydown.enter="doChangePwd" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showPwdDialog = false">取消</el-button>
+      <el-button type="primary" :loading="pwdLoading" @click="doChangePwd">确认修改</el-button>
+    </template>
+  </el-dialog>
+  </template>
 </template>
 
 <style scoped>
@@ -182,9 +248,14 @@ const breadcrumbs: Record<string, string> = {
 .breadcrumb-sep { margin: 0 6px; color: #cbd5e1; }
 .breadcrumb .active { color: #1e293b; font-weight: 600; }
 .topbar-right { display: flex; align-items: center; gap: 16px; }
-.bell-icon { color: #64748b; cursor: pointer; transition: color 0.2s; }
-.bell-icon:hover { color: #0d9488; }
-.user-avatar { font-size: 22px; cursor: pointer; }
+.user-avatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--color-brand-600); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: opacity 0.2s;
+}
+.user-avatar:hover { opacity: .85; }
 
 /* 主内容区 */
 .main-content {
@@ -196,4 +267,15 @@ const breadcrumbs: Record<string, string> = {
 .page-fade-leave-active { transition: all 0.15s ease; }
 .page-fade-enter-from { opacity: 0; transform: translateY(8px); }
 .page-fade-leave-to { opacity: 0; transform: translateY(-4px); }
+
+/* AI 悬浮按钮 */
+.chat-float-btn {
+  position: fixed; bottom: 28px; right: 28px; z-index: 150;
+  width: 52px; height: 52px; border-radius: 50%;
+  background: var(--color-brand-600); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; box-shadow: 0 4px 16px rgba(13,148,136,.35);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.chat-float-btn:hover { transform: scale(1.08); box-shadow: 0 6px 20px rgba(13,148,136,.45); }
 </style>

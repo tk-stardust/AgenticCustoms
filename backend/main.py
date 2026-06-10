@@ -50,12 +50,20 @@ from api.routes.history import router as history_router
 from api.routes.report import router as report_router
 from api.routes.ocr import router as ocr_router
 from api.routes.stats import router as stats_router
+from api.routes.tariff import router as tariff_router
+from api.routes.chat import router as chat_router
+from api.routes.auth import router as auth_router
+from api.routes.compliance import router as compliance_router
 app.include_router(classify_router)
 app.include_router(pipeline_router)
 app.include_router(history_router)
 app.include_router(report_router)
 app.include_router(ocr_router)
 app.include_router(stats_router)
+app.include_router(tariff_router)
+app.include_router(chat_router)
+app.include_router(auth_router)
+app.include_router(compliance_router)
 
 # 前端页面路由（每个 Vue Router 路径对应一个路由，刷新不 404）
 from api.routes.pages import router as pages_router

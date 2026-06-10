@@ -1,10 +1,11 @@
 """申报历史记录接口"""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, desc, delete, func
 
+from api.deps import require_user
 from data.db.database import async_session
-from data.db.models import Declaration
+from data.db.models import Declaration, User
 from shared.logger import get_logger
 
 logger = get_logger(__name__)
@@ -18,17 +19,12 @@ async def list_history(
     page_size: int = 20,
     search: str = "",
     filter: str = "all",
+    user: User = Depends(require_user),
 ):
-    """查询申报记录（分页 + 筛选）
-
-    :param page: 页码
-    :param page_size: 每页条数
-    :param search: 搜索关键词（匹配商品名称/HS编码）
-    :param filter: 筛选类型 all/completed/pending/risk
-    """
+    """查询申报记录（分页 + 筛选）"""
     async with async_session() as session:
-        query = select(Declaration)
-        count_q = select(func.count(Declaration.id))
+        query = select(Declaration).where(Declaration.user_id == user.id)
+        count_q = select(func.count(Declaration.id)).where(Declaration.user_id == user.id)
 
         # 筛选
         if search:
@@ -80,11 +76,11 @@ async def list_history(
 
 
 @router.delete("/history/{record_id}")
-async def delete_record(record_id: int):
+async def delete_record(record_id: int, user: User = Depends(require_user)):
     """删除指定申报记录"""
     async with async_session() as session:
         result = await session.execute(
-            select(Declaration).where(Declaration.id == record_id)
+            select(Declaration).where(Declaration.id == record_id, Declaration.user_id == user.id)
         )
         record = result.scalar_one_or_none()
         if not record:

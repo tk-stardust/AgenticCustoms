@@ -27,15 +27,19 @@ def _build_doc(item: HsCode) -> str:
 async def seed_chroma() -> int:
     collection = get_collection()
 
+    # 清空旧的 HS 编码数据（保留历史案例 hist_ 前缀的）
+    all_ids = collection.get(limit=10000).get("ids", [])
+    stale = [i for i in all_ids if not i.startswith("hist_")]
+    if stale:
+        collection.delete(ids=stale)
+        logger.info("chroma.cleared", removed=len(stale))
+
     async with async_session() as session:
         result = await session.execute(select(HsCode))
         rows = result.scalars().all()
 
     new_count = 0
     for row in rows:
-        existing = collection.get(ids=[row.code])
-        if existing["ids"]:
-            continue  # 已存在，跳过
         doc = _build_doc(row)
         collection.add(
             ids=[row.code],

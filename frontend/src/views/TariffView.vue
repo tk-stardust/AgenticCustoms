@@ -1,0 +1,423 @@
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
+import { queryTariff } from '@/api/tariff'
+import type { TariffCalcResponse } from '@/types'
+
+const route = useRoute()
+const mode = ref<'auto' | 'direct'>('auto')
+const form = ref({
+  name: '', description: '', material: '', function: '',
+  hsCode: '', targetCountry: '', declaredValue: '',
+})
+onMounted(() => {
+  const q = route.query.q as string
+  if (!q) return
+  if (/^\d{4,6}(\.\d{2,4})?$/.test(q)) {
+    mode.value = 'direct'
+    form.value.hsCode = q
+  } else {
+    form.value.name = q
+  }
+})
+const loading = ref(false)
+const loadingStep = ref(0)
+const result = ref<TariffCalcResponse | null>(null)
+
+const canCalculate = computed(() => {
+  if (loading.value) return false
+  if (mode.value === 'auto') return form.value.name.trim() && form.value.targetCountry
+  return form.value.hsCode.trim() && form.value.targetCountry
+})
+
+async function calculate() {
+  if (!canCalculate.value) return
+  loading.value = true
+  loadingStep.value = 1
+
+  try {
+    const res = await queryTariff({
+      hs_code: mode.value === 'direct' ? form.value.hsCode : undefined,
+      name: form.value.name,
+      description: form.value.description,
+      material: form.value.material,
+      function: form.value.function,
+      target_country: form.value.targetCountry,
+      declared_value: parseFloat(form.value.declaredValue) || 0,
+    })
+    result.value = res
+    loadingStep.value = 3
+    setTimeout(() => { loading.value = false; loadingStep.value = 0 }, 400)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '计算失败')
+    loading.value = false
+    loadingStep.value = 0
+  }
+}
+
+function reset() {
+  form.value = { name: '', description: '', material: '', function: '', hsCode: '', targetCountry: '', declaredValue: '' }
+  result.value = null
+}
+
+const countryNames: Record<string, string> = {
+  US: '美国', EU: '欧盟', JP: '日本', KR: '韩国', CN: '中国', VN: '越南',
+}
+
+const tariffItems = computed(() => result.value?.tariff?.items || [])
+
+function goPipeline() {
+  window.open('/pipeline', '_self')
+}
+</script>
+
+<template>
+  <div class="page-container">
+    <div class="page-header">
+      <h1>关税计算</h1>
+      <p class="page-subtitle">智能计算跨境贸易税费，支持自动归类与直接编码查询</p>
+    </div>
+
+    <!-- 模式切换 -->
+    <div class="mode-switch">
+      <button :class="['mode-btn', { active: mode === 'auto' }]" @click="mode = 'auto'">
+        🤖 AI 自动归类
+      </button>
+      <button :class="['mode-btn', { active: mode === 'direct' }]" @click="mode = 'direct'">
+        💰 直接输入编码
+      </button>
+    </div>
+
+    <!-- 输入区域 -->
+    <div class="input-section">
+      <!-- 左侧表单 -->
+      <div class="input-card">
+        <div class="input-card-title">
+          {{ mode === 'auto' ? '商品信息' : '编码信息' }}
+        </div>
+
+        <!-- 模式 A：AI 自动归类 -->
+        <template v-if="mode === 'auto'">
+          <el-form label-position="top">
+            <el-form-item label="商品名称" required>
+              <el-input v-model="form.name" placeholder="例如：蓝牙智能音箱" maxlength="100" />
+            </el-form-item>
+            <el-form-item label="商品描述" required>
+              <el-input v-model="form.description" type="textarea" :rows="3" placeholder="描述外观、材质、功能、用途等，越详细归类越准确" maxlength="500" />
+            </el-form-item>
+            <div class="form-row">
+              <el-form-item label="材质">
+                <el-input v-model="form.material" placeholder="塑料/金属" maxlength="50" />
+              </el-form-item>
+              <el-form-item label="功能">
+                <el-input v-model="form.function" placeholder="音乐播放" maxlength="50" />
+              </el-form-item>
+            </div>
+            <el-form-item label="目标国家 / 地区" required>
+              <el-select v-model="form.targetCountry" placeholder="请选择">
+                <el-option v-for="(name, code) in countryNames" :key="code" :value="code" :label="`${name} (${code})`" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="申报价值 (USD)">
+              <el-input v-model="form.declaredValue" type="number" placeholder="1000" />
+            </el-form-item>
+          </el-form>
+        </template>
+
+        <!-- 模式 B：直接输入编码 -->
+        <template v-else>
+          <el-form label-position="top">
+            <el-form-item label="HS 编码" required>
+              <el-input v-model="form.hsCode" placeholder="例如：8518.22.00" maxlength="12" />
+              <div class="form-hint">输入 6-10 位 HS 编码，系统将自动匹配税则</div>
+            </el-form-item>
+            <el-form-item label="商品名称（可选）">
+              <el-input v-model="form.name" placeholder="蓝牙智能音箱" maxlength="100" />
+            </el-form-item>
+            <el-form-item label="目标国家" required>
+              <el-select v-model="form.targetCountry" placeholder="请选择">
+                <el-option v-for="(name, code) in countryNames" :key="code" :value="code" :label="`${name} (${code})`" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="申报价值 (USD)">
+              <el-input v-model="form.declaredValue" type="number" placeholder="1000" />
+            </el-form-item>
+          </el-form>
+        </template>
+
+        <div class="btn-row">
+          <button class="btn-primary" :disabled="!canCalculate" @click="calculate">
+            <el-icon><Search /></el-icon> {{ mode === 'auto' ? '开始计算' : '直接计算' }}
+          </button>
+          <button class="btn-ghost" @click="reset">清空</button>
+        </div>
+      </div>
+
+      <!-- 右侧信息面板 -->
+      <div class="info-card">
+        <div class="info-card-title">计算说明</div>
+
+        <template v-if="mode === 'auto'">
+          <div class="info-steps">
+            <div class="info-step">
+              <div class="info-step-num">1</div>
+              <div class="info-step-text"><strong>特征拆解</strong><br>提取材质、功能、用途等关键属性</div>
+            </div>
+            <div class="info-step">
+              <div class="info-step-num">2</div>
+              <div class="info-step-text"><strong>RAG 检索</strong><br>匹配 WCO 税则注释与历史归类案例</div>
+            </div>
+            <div class="info-step">
+              <div class="info-step-num">3</div>
+              <div class="info-step-text"><strong>编码推理</strong><br>输出 HS 编码与置信度评分</div>
+            </div>
+            <div class="info-step">
+              <div class="info-step-num">4</div>
+              <div class="info-step-text"><strong>税费计算</strong><br>查询目标国税率，计算总税费</div>
+            </div>
+          </div>
+          <div class="info-time">⏱️ 预计处理时间 ~15-20 秒</div>
+          <div class="info-scene">
+            <p><strong>适用场景：</strong></p>
+            <p>• 不确定商品 HS 编码</p>
+            <p>• 新品类首次出口</p>
+          </div>
+        </template>
+
+        <template v-else>
+          <div class="info-steps">
+            <div class="info-step">
+              <div class="info-step-num">1</div>
+              <div class="info-step-text"><strong>编码校验</strong><br>验证 HS 编码有效性</div>
+            </div>
+            <div class="info-step">
+              <div class="info-step-num">2</div>
+              <div class="info-step-text"><strong>税率查询</strong><br>匹配目标国最新税则</div>
+            </div>
+            <div class="info-step">
+              <div class="info-step-num">3</div>
+              <div class="info-step-text"><strong>税费计算</strong><br>基础关税 + 附加税 + 优惠税率</div>
+            </div>
+          </div>
+          <div class="info-time">⏱️ 预计处理时间 ~3-5 秒</div>
+          <div class="info-scene">
+            <p><strong>适用场景：</strong></p>
+            <p>• 已知 HS 编码，快速查税率</p>
+            <p>• 验证归类结果准确性</p>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- 加载遮罩 -->
+    <div v-if="loading" class="loading-panel">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">{{ loadingStep >= 2 ? '正在计算税费...' : '正在进行 HS 归类推理...' }}</div>
+    </div>
+
+    <!-- 结果 -->
+    <div v-if="result && !loading" class="result-section">
+      <div class="result-card">
+        <div class="result-header">
+          <div class="result-header-left">
+            <span class="hs-badge">{{ result.hs_code }}</span>
+            <span v-if="result.confidence" class="hs-confidence">置信度 {{ (result.confidence * 100).toFixed(0) }}%</span>
+          </div>
+          <div class="result-header-right">
+            <div class="result-product-name">{{ result.product_name }}</div>
+            <div v-if="result.hs_description" class="result-product-desc">{{ result.hs_description }}</div>
+          </div>
+        </div>
+
+        <div class="result-body">
+          <div class="result-body-title">{{ countryNames[result.tariff.country] || result.tariff.country }} 进口税率明细</div>
+
+          <el-table :data="tariffItems" stripe style="width:100%">
+            <el-table-column prop="name" label="税费项目" />
+            <el-table-column prop="rate" label="税率" width="120">
+              <template #default="{ row }">{{ row.rate }}%</template>
+            </el-table-column>
+            <el-table-column prop="amount" label="金额 (USD)" width="140">
+              <template #default="{ row }">
+                <span v-if="row.amount != null" class="tax-amount">${{ row.amount.toFixed(2) }}</span>
+                <span v-else class="text-muted">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="note" label="备注" min-width="160">
+              <template #default="{ row }">
+                <span v-if="row.note" class="text-sm">{{ row.note }}</span>
+                <span v-else class="text-muted">—</span>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <div v-if="result.tariff.data_missing" class="data-warning">
+            ⚠️ 部分税率数据缺失，结果仅供参考，请人工核实
+          </div>
+
+          <div class="suggestion-box">
+            <div class="suggestion-title">💡 优化建议</div>
+            <div class="suggestion-text">
+              <p v-if="result.tariff.fta_applied">✓ 可适用 {{ result.tariff.fta_applied }} 优惠税率，预计节省 ${{ result.tariff.fta_saving?.toFixed(2) || '0.00' }}</p>
+              <p v-else>• 当前未命中 FTA 优惠，建议核查原产地规则是否符合 RCEP 等协定条件</p>
+              <p v-if="result.tariff.total_rate === 0 && !result.tariff.data_missing">• 该编码在目标国为免税商品</p>
+              <p>• 申报价值为估算，实际税费以海关审定价为准</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="result-footer">
+          <div class="total-tax">
+            <span class="total-tax-label">预估总税费：</span>
+            <span class="total-tax-value">${{ result.tariff.total_amount?.toFixed(2) || '0.00' }}</span>
+            <span class="total-tax-note">（综合税率 {{ result.tariff.total_rate }}%）</span>
+          </div>
+          <button class="btn-text" @click="goPipeline">跳转全流程生成申报文件 →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 空状态 -->
+    <div v-if="!result && !loading" class="empty-state">
+      <div class="empty-icon">💰</div>
+      <div class="empty-title">输入商品信息开始计算</div>
+      <div class="empty-desc">选择计算模式，填写表单后点击计算按钮</div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.page-container { padding: 24px 32px 32px; max-width: 1400px; margin: 0 auto; }
+.page-header { margin-bottom: 20px; }
+.page-header h1 { font-size: 24px; font-weight: 700; color: var(--color-gray-800); margin: 0 0 6px; }
+.page-subtitle { font-size: 14px; color: var(--color-gray-500); margin: 0; }
+
+/* 模式切换 */
+.mode-switch { display: flex; gap: 8px; margin-bottom: 20px; padding: 4px; background: var(--color-gray-100); border-radius: 10px; width: fit-content; }
+.mode-btn { padding: 8px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; border: none; background: transparent; color: var(--color-gray-500); transition: all 0.2s ease; }
+.mode-btn.active { background: #fff; color: var(--color-brand-600); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+.mode-btn:hover:not(.active) { color: var(--color-gray-800); }
+
+/* 输入区 */
+.input-section { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+@media (max-width: 900px) { .input-section { grid-template-columns: 1fr; } }
+
+.input-card, .info-card {
+  background: #fff; border-radius: 16px; padding: 24px;
+  border: 1px solid var(--color-gray-200);
+}
+.input-card-title, .info-card-title {
+  font-size: 16px; font-weight: 600; color: var(--color-gray-800); margin-bottom: 20px;
+}
+.info-card { background: var(--color-gray-50); }
+
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+.form-hint { font-size: 12px; color: var(--color-gray-400); margin-top: 4px; }
+
+.btn-row { display: flex; gap: 12px; margin-top: 8px; }
+.btn-primary {
+  background: var(--color-brand-600); color: #fff; border: none;
+  padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 500;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  transition: all 0.2s ease;
+}
+.btn-primary:hover { background: var(--color-brand-700); }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+.btn-ghost {
+  background: #fff; color: var(--color-gray-700); border: 1px solid var(--color-gray-300);
+  padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn-ghost:hover { background: var(--color-gray-50); }
+.btn-text {
+  background: none; border: none; color: var(--color-brand-600); font-size: 13px;
+  font-weight: 500; cursor: pointer; padding: 0;
+}
+.btn-text:hover { text-decoration: underline; }
+
+/* 信息面板 */
+.info-steps { margin-bottom: 16px; }
+.info-step { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+.info-step-num {
+  width: 22px; height: 22px; min-width: 22px; border-radius: 50%;
+  background: var(--color-gray-200); color: var(--color-gray-500);
+  font-size: 12px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+}
+.info-step-text { font-size: 13px; color: var(--color-gray-600); line-height: 1.5; }
+.info-step-text strong { color: var(--color-gray-800); }
+.info-time { text-align: center; font-size: 12px; color: var(--color-gray-400); padding-top: 12px; border-top: 1px solid var(--color-gray-200); margin-bottom: 12px; }
+.info-scene { font-size: 13px; color: var(--color-gray-500); line-height: 1.7; }
+.info-scene strong { color: var(--color-gray-800); }
+
+/* 加载 */
+.loading-panel { text-align: center; padding: 48px 20px; }
+.loading-spinner {
+  width: 40px; height: 40px; border: 3px solid var(--color-gray-200);
+  border-top-color: var(--color-brand-600); border-radius: 50%;
+  animation: spin 1s linear infinite; margin: 0 auto 16px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-size: 14px; color: var(--color-gray-500); }
+
+/* 结果 */
+.result-section { margin-top: 0; }
+.result-card { background: #fff; border-radius: 16px; border: 1px solid var(--color-gray-200); overflow: hidden; }
+.result-header {
+  background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
+  padding: 20px 24px; border-bottom: 1px solid #d1fae5;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px;
+}
+.result-header-left { display: flex; align-items: center; gap: 16px; }
+.hs-badge {
+  background: var(--color-brand-600); color: #fff;
+  padding: 8px 16px; border-radius: 8px;
+  font-size: 20px; font-weight: 700;
+  font-family: 'SF Mono', Monaco, Consolas, monospace;
+  letter-spacing: 1px;
+}
+.hs-confidence { font-size: 13px; color: var(--color-brand-700); font-weight: 500; }
+.result-header-right { text-align: right; }
+.result-product-name { font-size: 16px; font-weight: 600; color: var(--color-gray-800); }
+.result-product-desc { font-size: 13px; color: var(--color-gray-500); margin-top: 2px; }
+.result-body { padding: 24px; }
+.result-body-title { font-size: 14px; font-weight: 600; color: var(--color-gray-800); margin-bottom: 16px; }
+
+.tax-amount { font-weight: 600; color: var(--color-danger); }
+.text-muted { color: var(--color-gray-400); }
+.text-sm { font-size: 13px; color: var(--color-gray-600); }
+
+.data-warning {
+  margin-top: 16px; padding: 12px 16px; background: #fefce8; border: 1px solid #fde68a;
+  border-radius: 8px; font-size: 13px; color: #92400e;
+}
+
+.suggestion-box {
+  margin-top: 16px; padding: 16px; background: #fffbeb; border-radius: 8px;
+  border: 1px solid #fde68a;
+}
+.suggestion-title { font-size: 13px; font-weight: 600; color: #92400e; margin-bottom: 8px; }
+.suggestion-text { font-size: 13px; color: #78350f; line-height: 1.7; }
+.suggestion-text p { margin: 4px 0; }
+
+.result-footer {
+  background: var(--color-gray-50); padding: 16px 24px;
+  border-top: 1px solid var(--color-gray-200);
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px;
+}
+.total-tax { display: flex; align-items: baseline; gap: 8px; }
+.total-tax-label { font-size: 14px; color: var(--color-gray-500); }
+.total-tax-value { font-size: 24px; font-weight: 700; color: var(--color-danger); }
+.total-tax-note { font-size: 12px; color: var(--color-gray-400); }
+
+/* 空状态 */
+.empty-state { text-align: center; padding: 60px 20px; color: var(--color-gray-400); }
+.empty-icon { font-size: 48px; margin-bottom: 16px; opacity: .5; }
+.empty-title { font-size: 16px; font-weight: 500; color: var(--color-gray-500); margin-bottom: 6px; }
+.empty-desc { font-size: 14px; }
+</style>

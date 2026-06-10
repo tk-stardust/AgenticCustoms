@@ -140,11 +140,11 @@ function statusLabel(r: HistoryRecord) { return statusMap[r.status]?.label || r.
   <div class="page-container">
     <div class="page-header"><h1>历史记录</h1></div>
 
-    <!-- 操作栏（始终显示） -->
-    <div class="toolbar">
+    <!-- 操作栏（有数据或搜索中时显示） -->
+    <div v-if="total > 0 || search" class="toolbar">
       <el-input v-model="search" placeholder="搜索商品名称 / HS编码" :prefix-icon="Search"
         clearable style="width:280px" size="large" class="search-input"/>
-      <div class="filter-tabs">
+      <div v-if="total > 0" class="filter-tabs">
         <button v-for="f in [{k:'all',l:'全部'},{k:'completed',l:'已完成'},{k:'pending',l:'处理中'},{k:'risk',l:'有风险'}]"
           :key="f.k" class="filter-btn" :class="{active:filter===f.k}" @click="filter=f.k as any">{{ f.l }}</button>
       </div>

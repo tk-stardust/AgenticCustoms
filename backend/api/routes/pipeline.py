@@ -4,14 +4,15 @@ import io
 import uuid
 import zipfile
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy import select
 
 from domain.commodity import Commodity
 from domain.declaration_doc import DeclarationDoc
+from api.deps import require_user
 from data.db.database import async_session
-from data.db.models import Declaration
+from data.db.models import Declaration, User
 from orchestration.graph import run_pipeline, run_pipeline_stream
 from shared.logger import get_logger
 
@@ -105,11 +106,8 @@ async def download_zip(request_id: str):
 
 
 @router.post("/pipeline/full")
-async def full_pipeline(commodity: Commodity, target_country: str = "US"):
-    """一键全流程——HS归类 → 关税/合规/原产地(并行) → 申报文件
-
-    返回包含所有中间结果和最终 DeclarationDoc 的完整响应。
-    """
+async def full_pipeline(commodity: Commodity, target_country: str = "US", user=Depends(require_user)):
+    """一键全流程——HS归类 → 关税/合规/原产地(并行) → 申报文件"""
     rid = uuid.uuid4().hex[:12]
     logger.info("api.pipeline.request", name=commodity.name, country=target_country)
 
@@ -117,10 +115,10 @@ async def full_pipeline(commodity: Commodity, target_country: str = "US"):
     doc: DeclarationDoc = state["documents"]
     doc.request_id = rid
 
-    # 保存申报记录
     async with async_session() as session:
         declaration = Declaration(
             request_id=rid,
+            user_id=user.id,
             commodity_name=commodity.name,
             commodity_description=commodity.description,
             hs_code=doc.customs_declaration.get("hs_code", ""),
@@ -141,8 +139,8 @@ async def full_pipeline(commodity: Commodity, target_country: str = "US"):
 
 
 @router.post("/pipeline/stream")
-async def pipeline_stream(commodity: Commodity, target_country: str = "US"):
-    """SSE 流式全流程——每个 Agent 完成时推送进度事件，替代前端假动画"""
+async def pipeline_stream(commodity: Commodity, target_country: str = "US", user: User = Depends(require_user)):
+    """SSE 流式全流程——每个 Agent 完成时推送进度事件"""
     rid = uuid.uuid4().hex[:12]
     logger.info("api.pipeline.stream", name=commodity.name, country=target_country)
 
@@ -150,18 +148,17 @@ async def pipeline_stream(commodity: Commodity, target_country: str = "US"):
 
     async def generate():
         async for chunk in run_pipeline_stream(commodity, target_country):
-            # 拦截 done 事件，保存记录
             if chunk.startswith("event: done"):
                 import json as _json
                 data_str = chunk.split("data: ", 1)[1].strip()
                 event_data = _json.loads(data_str)
                 results_holder["data"] = event_data
-                # 保存申报记录
                 doc = DeclarationDoc(**event_data["documents"])
                 doc.request_id = rid
                 async with async_session() as session:
                     declaration = Declaration(
                         request_id=rid,
+                        user_id=user.id,
                         commodity_name=commodity.name,
                         commodity_description=commodity.description,
                         hs_code=doc.customs_declaration.get("hs_code", ""),

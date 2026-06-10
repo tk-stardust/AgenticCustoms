@@ -1,14 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, onDeactivated } from 'vue'
+import { ref, computed, onDeactivated, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { usePipelineStore } from '@/stores/pipeline'
 import type { Commodity } from '@/types'
+
+const route = useRoute()
 import { Search, MagicStick, CopyDocument, Check, Camera } from '@element-plus/icons-vue'
 import { ocrImage } from '@/api/ocr'
 
 const store = usePipelineStore()
 const emptyClassify = (): Commodity => ({ name:'',description:'',material:'',function:'',usage:'' })
 const form = ref<Commodity>(emptyClassify())
+onMounted(() => {
+  const q = route.query.q as string
+  if (q) form.value.name = q
+})
 function clearForm() {
   form.value = emptyClassify()
 }

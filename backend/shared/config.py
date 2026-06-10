@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     embedding_model: str = "bge-base-zh-v1.5"
     embedding_model_path: str = ""  # 本地模型路径，空则从HF下载
 
+    # JWT
+    jwt_secret: str = "change-me-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 1440  # 24 小时
+
     @property
     def mysql_url(self) -> str:
         return (

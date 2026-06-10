@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onActivated, onDeactivated } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { usePipelineStore } from '@/stores/pipeline'
 import type { Commodity } from '@/types'
@@ -9,6 +10,7 @@ import { runPipelineSSE } from '@/api/pipeline'
 
 const store = usePipelineStore()
 let abortCtrl: AbortController | null = null
+const route = useRoute()
 const emptyPipeline = (): Commodity => ({ name: '', description: '', material: '', function: '', usage: '' })
 const form = ref<Commodity>(emptyPipeline())
 const country = ref(store.targetCountry)
@@ -19,6 +21,8 @@ onDeactivated(() => {
 })
 // 首次挂载：从 Classify 跳转过来时自动运行
 onMounted(() => {
+  const q = route.query.q as string
+  if (q) form.value.name = q
   if (!store.autoRun) return
   store.autoRun = false
   if (store.commodity?.name) {

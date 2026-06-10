@@ -77,6 +77,7 @@ function loadDemo() {
 }
 const demoMode = ref(false)
 function goRiskHistory() {
+  if (demoMode.value) return  // 示例数据不跳转
   sessionStorage.setItem('historyFilter', 'risk')
   router.push('/history')
 }
@@ -93,8 +94,10 @@ function goRiskHistory() {
       <div class="empty-icon">📊</div>
       <h2>暂无数据</h2>
       <p class="empty-sub">运行一键全流程后，风险数据将在此汇总分析</p>
-      <button class="btn-primary" @click="router.push('/pipeline')">去一键全流程</button>
-      <button class="btn-text" style="margin-top:12px" @click="loadDemo()">📋 加载示例数据</button>
+      <div class="empty-actions">
+        <button class="btn-primary" @click="router.push('/pipeline')">去一键全流程</button>
+        <button class="btn-outline" @click="loadDemo()">📋 加载示例数据</button>
+      </div>
     </div>
 
     <template v-else>
@@ -110,7 +113,7 @@ function goRiskHistory() {
           <div class="stat-value">{{ stats.pass_rate }}%</div>
           <div class="progress-bar-sm"><div class="progress-fill-sm" :style="{ width: stats.pass_rate + '%' }"></div></div>
         </div>
-        <div class="stat-card" style="cursor:pointer" @click="goRiskHistory()">
+        <div class="stat-card" :style="{ cursor: demoMode ? 'default' : 'pointer' }" @click="goRiskHistory()">
           <div class="stat-label">风险预警</div>
           <div class="stat-value">{{ stats.warnings }}</div>
           <el-tag type="danger" size="small" effect="dark">待处理</el-tag>
@@ -165,6 +168,9 @@ function goRiskHistory() {
 .empty-sub{font-size:14px;color:#64748b;margin-bottom:20px}
 .btn-primary{display:inline-flex;align-items:center;padding:12px 28px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#0d9488,#0f766e);border:none;border-radius:10px;cursor:pointer;transition:all .2s}
 .btn-primary:hover{filter:brightness(1.08);box-shadow:0 4px 12px rgba(13,148,136,.3)}
+.btn-outline{display:inline-flex;align-items:center;padding:12px 28px;font-size:15px;font-weight:500;color:#0d9488;background:#fff;border:1px solid #0d9488;border-radius:10px;cursor:pointer;transition:all .2s}
+.btn-outline:hover{background:rgba(13,148,136,.06)}
+.empty-actions{display:flex;gap:12px;justify-content:center}
 
 /* 统计卡片 */
 .stat-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}

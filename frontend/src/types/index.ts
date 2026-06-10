@@ -106,6 +106,26 @@ export interface PipelineFullResponse {
   origin_result: OriginResult
 }
 
+// ---- 关税计算 ----
+
+export interface TariffRequest {
+  hs_code?: string
+  name: string
+  description: string
+  material: string
+  function: string
+  target_country: string
+  declared_value: number
+}
+
+export interface TariffCalcResponse {
+  hs_code: string
+  confidence: number
+  hs_description: string
+  product_name: string
+  tariff: TariffResult
+}
+
 // ---- API ----
 
 export interface ApiResponse<T> {

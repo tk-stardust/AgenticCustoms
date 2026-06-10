@@ -32,6 +32,36 @@ async def classify_page():
     return _index()
 
 
+@router.get("/compliance")
+async def compliance_page():
+    """合规校验"""
+    return _index()
+
+
+@router.get("/tariff")
+async def tariff_page():
+    """关税计算"""
+    return _index()
+
+
+@router.get("/login")
+async def login_page():
+    """登录"""
+    return _index()
+
+
+@router.get("/register")
+async def register_page():
+    """注册"""
+    return _index()
+
+
+@router.get("/chat")
+async def chat_page():
+    """AI 助手"""
+    return _index()
+
+
 @router.get("/pipeline")
 async def pipeline_page():
     """一键全流程"""

@@ -60,12 +60,35 @@ class SanctionEntry(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class User(Base):
+    """用户"""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(50), unique=True, index=True, nullable=False)
+    password_hash = Column(String(200), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class ChatMessage(Base):
+    """AI 对话消息"""
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(64), index=True, nullable=False)
+    user_id = Column(Integer, index=True, nullable=True)
+    role = Column(String(20), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class Declaration(Base):
     """申报记录——每次全流程的结果快照"""
     __tablename__ = "declarations"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     request_id = Column(String(64), unique=True, index=True, nullable=False)
+    user_id = Column(Integer, index=True, nullable=True)
     commodity_name = Column(String(500), nullable=False)
     commodity_description = Column(Text, nullable=True)
     hs_code = Column(String(20), nullable=True)
