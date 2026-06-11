@@ -6,7 +6,7 @@ import { usePipelineStore } from '@/stores/pipeline'
 import type { Commodity } from '@/types'
 
 const route = useRoute()
-import { Search, MagicStick, CopyDocument, Check, Camera } from '@element-plus/icons-vue'
+import { Search, MagicStick, CopyDocument, Check, Camera, Loading } from '@element-plus/icons-vue'
 import { ocrImage } from '@/api/ocr'
 
 const store = usePipelineStore()
@@ -18,6 +18,7 @@ onMounted(() => {
 })
 function clearForm() {
   form.value = emptyClassify()
+  ocrResult.value = null
 }
 function clearResult() {
   store.reset()
@@ -28,11 +29,16 @@ onDeactivated(() => {
 const loadingStep = ref(0)
 const ocrLoading = ref(false)
 const ocrResult = ref<Commodity | null>(null)  // 仅存 OCR 识别结果，手动输入不触发
+const lastFileKey = ref('')   // 上次上传的文件标识（name+size+lastModified）
+const formEdited = ref(false)  // OCR 后用户是否手动改过表单
+function onFieldEdit() { formEdited.value = true }
 let stepTimer: ReturnType<typeof setInterval> | null = null
 
 async function onUpload(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   if (!file) return
+  const thisKey = `${file.name}|${file.size}|${file.lastModified}`
+  if (thisKey === lastFileKey.value && !formEdited.value) { (e.target as HTMLInputElement).value = ''; return }
   ocrLoading.value = true
   try {
     const base64 = await new Promise<string>((resolve, reject) => {
@@ -48,8 +54,10 @@ async function onUpload(e: Event) {
     form.value.function = result.function || form.value.function
     form.value.usage = result.usage || form.value.usage
     ocrResult.value = { ...result }
+    lastFileKey.value = thisKey
+    formEdited.value = false
   } catch { /* ignored */ }
-  finally { ocrLoading.value = false }
+  finally { ocrLoading.value = false; (e.target as HTMLInputElement).value = '' }
 }
 const collActive = ref<string[]>(['reasoning'])
 
@@ -61,6 +69,10 @@ async function onSubmit() {
   await store.runClassify({...form.value})
   if(stepTimer){clearInterval(stepTimer);stepTimer=null}
   loadingStep.value=3
+}
+async function reRun() {
+  store.reset()
+  await onSubmit()
 }
 const confidenceType = computed(()=>{
   if(!store.hsResult) return 'info'
@@ -76,6 +88,14 @@ function highlightCitation(text: string): string {
     .replace(/注释\s*[一二三四五六七八九十]/g, '<mark>$&</mark>')
 }
 const showManual=ref(false); const manualHs=ref('')
+function submitManual() {
+  const code = manualHs.value.trim()
+  if (!code) { ElMessage.warning('请输入HS编码'); return }
+  if (!/^\d{6,12}$/.test(code.replace(/\./g,''))) { ElMessage.warning('请输入6-12位数字HS编码'); return }
+  if (store.hsResult) store.hsResult.code = code
+  showManual.value = false
+  ElMessage.success('HS编码已更新')
+}
 async function copyCode(){ if(!store.hsResult) return; await navigator.clipboard.writeText(store.hsResult.code) }
 const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 章...','匹配历史归类案例...','LLM 推理合成中...']
 </script>
@@ -93,9 +113,10 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
           <div class="field-group">
             <label class="field-label"><span class="required-star">*</span> 商品名称</label>
             <div class="input-with-btn">
-              <el-input v-model="form.name" placeholder="例：蓝牙智能音箱" size="large" class="custom-input" clearable maxlength="200" show-word-limit/>
+              <el-input v-model="form.name" placeholder="例：蓝牙智能音箱" size="large" class="custom-input" clearable maxlength="200" show-word-limit @input="onFieldEdit"/>
               <label class="ocr-btn" :class="{loading:ocrLoading}" title="拍照识别">
-                <el-icon :size="18"><Camera/></el-icon>
+                <el-icon :size="18" v-if="!ocrLoading"><Camera/></el-icon>
+                <el-icon :size="18" class="is-loading" v-else><Loading/></el-icon>
                 <input type="file" accept="image/*" hidden @change="onUpload"/>
               </label>
             </div>
@@ -103,10 +124,13 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
           <div class="field-group">
             <label class="field-label"><span class="required-star">*</span> 商品描述</label>
             <el-input v-model="form.description" type="textarea" :rows="4"
-              placeholder="描述外观、材质、功能、用途..." class="custom-textarea" clearable maxlength="2000" show-word-limit/>
+              placeholder="描述外观、材质、功能、用途..." class="custom-textarea" clearable maxlength="2000" show-word-limit @input="onFieldEdit"/>
           </div>
           <div v-if="ocrResult" class="ai-extract">
-            <div class="ai-badge"><el-icon :size="14"><MagicStick/></el-icon><span>AI 自动识别</span></div>
+            <div class="ai-badge">
+              <el-icon :size="14"><MagicStick/></el-icon><span>AI 自动识别</span>
+              <button type="button" class="ai-edit-btn" @click="ocrResult=null">修改</button>
+            </div>
             <div class="extract-tags">
               <span v-if="ocrResult.material" class="extract-tag">材质：<b>{{ ocrResult.material }}</b></span>
               <span v-if="ocrResult.function" class="extract-tag">功能：<b>{{ ocrResult.function }}</b></span>
@@ -114,9 +138,9 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
             </div>
           </div>
           <el-row v-else :gutter="12">
-            <el-col :span="8"><el-form-item label="材质"><el-input v-model="form.material" placeholder="塑料/金属" clearable maxlength="200"/></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="功能"><el-input v-model="form.function" placeholder="音乐播放" clearable maxlength="200"/></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="用途"><el-input v-model="form.usage" placeholder="家庭娱乐" clearable maxlength="200"/></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="材质"><el-input v-model="form.material" placeholder="塑料/金属" clearable maxlength="200" @input="onFieldEdit"/></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="功能"><el-input v-model="form.function" placeholder="音乐播放" clearable maxlength="200" @input="onFieldEdit"/></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="用途"><el-input v-model="form.usage" placeholder="家庭娱乐" clearable maxlength="200" @input="onFieldEdit"/></el-form-item></el-col>
           </el-row>
           <div class="btn-group">
             <button type="button" class="btn-primary" :class="{loading:store.classifyLoading}" :disabled="store.classifyLoading" @click="onSubmit">
@@ -182,20 +206,13 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
               <div v-for="(c,i) in store.hsResult.citations" :key="i" class="citation-card" :style="{animationDelay:`${i*.08}s`}" v-html="highlightCitation(c)"></div>
             </el-collapse-item>
           </el-collapse>
-          <div v-if="store.hsResult.alternatives.length" style="margin-top:12px">
-            <div class="alt-title">备选编码</div>
-            <div v-for="a in store.hsResult.alternatives" :key="a.code" class="alt-row">
-              <el-tag size="small" round>{{ a.code }}</el-tag><span>{{ a.description }}</span><span class="alt-conf">{{ (a.confidence*100).toFixed(0) }}%</span>
-            </div>
-          </div>
           <div class="result-actions">
-            <button class="btn-primary">确认选用</button>
-            <button class="btn-ghost" @click="store.reset()">重新推理</button>
+            <button class="btn-ghost" @click="reRun">重新推理</button>
             <button class="btn-text" @click="showManual=!showManual">人工修正</button>
           </div>
           <div v-if="showManual" class="manual-fix">
-            <el-input v-model="manualHs" placeholder="输入正确的 HS 编码" size="small" style="margin-right:8px"/>
-            <el-button size="small" type="primary">提交</el-button>
+            <el-input v-model="manualHs" placeholder="输入正确的 HS 编码" size="small" style="margin-right:8px" @keydown.enter="submitManual"/>
+            <el-button size="small" type="primary" @click="submitManual">提交</el-button>
           </div>
         </template>
       </div>
@@ -232,6 +249,8 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
 .extract-tags{display:flex;flex-wrap:wrap;gap:8px}
 .extract-tag{padding:3px 10px;border-radius:999px;font-size:12px;color:#475569;background:rgba(13,148,136,.08)}
 .extract-tag b{color:#1e293b}
+.ai-edit-btn{margin-left:auto;padding:1px 8px;border:1px solid #0d9488;border-radius:4px;background:none;color:#0d9488;font-size:11px;cursor:pointer}
+.ai-edit-btn:hover{background:#0d9488;color:#fff}
 
 .btn-group{display:flex;gap:12px;margin-top:8px}
 .btn-primary{display:inline-flex;align-items:center;padding:12px 28px;font-size:16px;font-weight:600;color:#fff;background:linear-gradient(135deg,#0d9488,#0f766e);border:none;border-radius:10px;cursor:pointer;transition:all .2s;will-change:transform}

@@ -82,7 +82,7 @@ class PasswordChange(BaseModel):
     new_password: str = Field(..., min_length=4, max_length=100)
 
 
-@router.put("/auth/password")
+@router.put("/password")
 async def change_password(req: PasswordChange, user: User = Depends(require_user)):
     """修改密码"""
     if not _verify_pw(req.old_password, user.password_hash):

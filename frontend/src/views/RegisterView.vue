@@ -49,13 +49,13 @@ async function onSubmit() {
       <p class="auth-subtitle">创建 AgenticCustoms 账号</p>
       <el-form label-position="top" @submit.prevent="onSubmit">
         <el-form-item label="用户名">
-          <el-input v-model="form.username" placeholder="2-50 个字符" maxlength="50" />
+          <el-input v-model="form.username" placeholder="2-50 个字符" maxlength="50" autocomplete="off" />
         </el-form-item>
         <el-form-item label="密码">
-          <el-input v-model="form.password" type="password" placeholder="至少 4 位" show-password />
+          <el-input v-model="form.password" type="password" placeholder="至少 4 位" show-password autocomplete="new-password" />
         </el-form-item>
         <el-form-item label="确认密码">
-          <el-input v-model="form.confirm" type="password" placeholder="再次输入密码" show-password @keydown.enter="onSubmit" />
+          <el-input v-model="form.confirm" type="password" placeholder="再次输入密码" show-password autocomplete="new-password" @keydown.enter="onSubmit" />
         </el-form-item>
         <button type="submit" class="auth-btn" :disabled="loading">
           {{ loading ? '注册中...' : '注册' }}

@@ -11,7 +11,7 @@ from shared.logger import get_logger
 
 logger = get_logger(__name__)
 
-CALC_PROMPT = """你是一名外贸关税分析师。根据以下信息计算综合税费。
+CALC_PROMPT = """你是一名外贸关税分析师。根据以下信息分析适用的税费项目。
 
 ## 输入
 HS编码：{hs_code}
@@ -24,21 +24,22 @@ HS编码：{hs_code}
 
 ## 要求
 1. 逐项列出：基础关税、增值税、反倾销税（如有）、FTA 优惠税率（如适用）
-2. 每项计算金额 = 申报总价值 × 税率 ÷ 100（amount 字段填数值，不要 null）
-3. 综合税率 = 各项税率之和
-4. 如有 FTA 优惠，计算节省金额
-5. 如果申报价值为 0，amount 填 0，note 注明"未提供申报价值"
+2. 综合税率 = 各项税率之和
+3. 如有 FTA 优惠，填写 fta_applied（FTA名称）和 fta_saving（税率差额，百分点）
+4. 如果申报价值为 0，note 注明"未提供申报价值"
+5. 金额计算由程序完成，你只需输出税率
 
 ## 输出格式（严格JSON）
 ```json
 {{
   "items": [
-    {{"name": "基础关税", "rate": 5.0, "amount": 500.0, "note": ""}},
-    {{"name": "增值税", "rate": 13.0, "amount": 1300.0, "note": ""}}
+    {{"name": "基础关税", "rate": 5.0, "note": ""}},
+    {{"name": "增值税", "rate": 13.0, "note": ""}}
   ],
   "total_rate": 18.0,
   "fta_applied": null,
-  "fta_saving": null
+  "fta_saving": null,
+  "data_missing": false
 }}
 ```"""
 
@@ -85,11 +86,12 @@ class TariffCalculatorAgent(BaseAgent[TariffResult]):
         messages = [{"role": "user", "content": prompt}]
         response = await chat(messages, temperature=0.1, max_tokens=512)
 
-        result = self._parse_response(response, hs_code, country)
+        result = self._parse_response(response, hs_code, country, declared_value)
         logger.info("tariff.done", total_rate=result.total_rate)
         return result
 
-    def _parse_response(self, response: str, hs_code: str, country: str) -> TariffResult:
+    def _parse_response(self, response: str, hs_code: str, country: str,
+                         declared_value: float = 0.0) -> TariffResult:
         import json
         text = response.strip()
         if "```json" in text:
@@ -103,11 +105,24 @@ class TariffCalculatorAgent(BaseAgent[TariffResult]):
         fta = data.get("fta_applied")
         if isinstance(fta, bool) or fta is True or fta is False:
             fta = None
+        items = []
+        total_amount = 0.0
+        for i in data.get("items", []):
+            amount = round(declared_value * i.get("rate", 0.0) / 100, 2)
+            total_amount += amount
+            items.append(TariffItem(
+                name=i.get("name", ""),
+                rate=i.get("rate", 0.0),
+                amount=amount,
+                note=i.get("note", ""),
+            ))
         return TariffResult(
             hs_code=hs_code,
             country=country,
-            items=[TariffItem(**i) for i in data.get("items", [])],
+            items=items,
             total_rate=data.get("total_rate", 0.0),
+            total_amount=total_amount,
             fta_applied=fta,
             fta_saving=data.get("fta_saving"),
+            data_missing=data.get("data_missing", False),
         )

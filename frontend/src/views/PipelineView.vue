@@ -23,12 +23,15 @@ onDeactivated(() => {
 onMounted(() => {
   const q = route.query.q as string
   if (q) form.value.name = q
-  if (!store.autoRun) return
-  store.autoRun = false
+  // 有预填数据时填入表单（不自动执行）
   if (store.commodity?.name) {
-    form.value = { name: store.commodity.name, description: store.commodity.description || '', material: '', function: '', usage: '' }
-    materialTags.value = []
+    form.value = { name: store.commodity.name, description: store.commodity.description || '', material: store.commodity.material || '', function: store.commodity.function || '', usage: store.commodity.usage || '', quantity: store.commodity.quantity || 1, declared_value: store.commodity.declared_value || 0 }
+    materialTags.value = (store.commodity.material || '').split('/').filter(Boolean)
     country.value = store.targetCountry
+  }
+  // 需要自动执行（历史记录重跑）
+  if (store.autoRun) {
+    store.autoRun = false
     setTimeout(() => onSubmit(), 500)
   }
 })

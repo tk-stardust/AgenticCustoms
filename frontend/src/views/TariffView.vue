@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, onMounted, onDeactivated } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { queryTariff } from '@/api/tariff'
+import { usePipelineStore } from '@/stores/pipeline'
 import type { TariffCalcResponse } from '@/types'
 
 const route = useRoute()
+const router = useRouter()
+const pipelineStore = usePipelineStore()
 const mode = ref<'auto' | 'direct'>('auto')
 const form = ref({
   name: '', description: '', material: '', function: '',
@@ -22,9 +25,17 @@ onMounted(() => {
     form.value.name = q
   }
 })
+onDeactivated(() => {
+  if (stepTimer) { clearInterval(stepTimer); stepTimer = null }
+})
 const loading = ref(false)
 const loadingStep = ref(0)
 const result = ref<TariffCalcResponse | null>(null)
+let stepTimer: ReturnType<typeof setInterval> | null = null
+
+const stepTotal = computed(() => mode.value === 'auto' ? 4 : 3)
+const autoSteps = ['正在拆解商品特征...', '检索 WCO 注释与税则...', '匹配历史归类案例...', 'LLM 推理合成 + 税率查询中...']
+const directSteps = ['校验 HS 编码有效性...', '查询目标国最新税则...', 'LLM 分析税费项目中...']
 
 const canCalculate = computed(() => {
   if (loading.value) return false
@@ -35,7 +46,8 @@ const canCalculate = computed(() => {
 async function calculate() {
   if (!canCalculate.value) return
   loading.value = true
-  loadingStep.value = 1
+  loadingStep.value = 0
+  stepTimer = setInterval(() => { if (loadingStep.value < stepTotal.value - 1) loadingStep.value++ }, 5000)
 
   try {
     const res = await queryTariff({
@@ -48,12 +60,12 @@ async function calculate() {
       declared_value: parseFloat(form.value.declaredValue) || 0,
     })
     result.value = res
-    loadingStep.value = 3
-    setTimeout(() => { loading.value = false; loadingStep.value = 0 }, 400)
+    loadingStep.value = stepTotal.value - 1
   } catch (e: any) {
     ElMessage.error(e?.message || '计算失败')
-    loading.value = false
-    loadingStep.value = 0
+  } finally {
+    if (stepTimer) { clearInterval(stepTimer); stepTimer = null }
+    setTimeout(() => { loading.value = false; loadingStep.value = 0 }, 500)
   }
 }
 
@@ -69,7 +81,19 @@ const countryNames: Record<string, string> = {
 const tariffItems = computed(() => result.value?.tariff?.items || [])
 
 function goPipeline() {
-  window.open('/pipeline', '_self')
+  if (result.value) {
+    pipelineStore.commodity = {
+      name: form.value.name || result.value.product_name || '',
+      description: form.value.description || '',
+      material: form.value.material || '',
+      function: form.value.function || '',
+      usage: '',
+      quantity: 1,
+      declared_value: parseFloat(form.value.declaredValue) || 0,
+    }
+    pipelineStore.targetCountry = form.value.targetCountry
+  }
+  router.push('/pipeline')
 }
 </script>
 
@@ -155,66 +179,38 @@ function goPipeline() {
         </div>
       </div>
 
-      <!-- 右侧信息面板 -->
+      <!-- 右侧状态面板 -->
       <div class="info-card">
-        <div class="info-card-title">计算说明</div>
-
-        <template v-if="mode === 'auto'">
-          <div class="info-steps">
-            <div class="info-step">
-              <div class="info-step-num">1</div>
-              <div class="info-step-text"><strong>特征拆解</strong><br>提取材质、功能、用途等关键属性</div>
+        <!-- 加载中：步骤进度动画 -->
+        <template v-if="loading">
+          <div class="info-card-title">处理中...</div>
+          <div class="progress-steps">
+            <div v-for="(label, i) in (mode==='auto'?autoSteps:directSteps)" :key="i"
+              class="progress-step" :class="{ done: i < loadingStep, current: i === loadingStep }">
+              <span class="progress-dot">
+                <span v-if="i < loadingStep">&#10003;</span>
+                <span v-else-if="i === loadingStep" class="pulse"></span>
+                <span v-else>{{ i + 1 }}</span>
+              </span>
+              <span class="progress-label">{{ label }}</span>
             </div>
-            <div class="info-step">
-              <div class="info-step-num">2</div>
-              <div class="info-step-text"><strong>RAG 检索</strong><br>匹配 WCO 税则注释与历史归类案例</div>
-            </div>
-            <div class="info-step">
-              <div class="info-step-num">3</div>
-              <div class="info-step-text"><strong>编码推理</strong><br>输出 HS 编码与置信度评分</div>
-            </div>
-            <div class="info-step">
-              <div class="info-step-num">4</div>
-              <div class="info-step-text"><strong>税费计算</strong><br>查询目标国税率，计算总税费</div>
-            </div>
-          </div>
-          <div class="info-time">⏱️ 预计处理时间 ~15-20 秒</div>
-          <div class="info-scene">
-            <p><strong>适用场景：</strong></p>
-            <p>• 不确定商品 HS 编码</p>
-            <p>• 新品类首次出口</p>
           </div>
         </template>
-
+        <!-- 空闲：步骤说明 -->
         <template v-else>
+          <div class="info-card-title">计算说明</div>
           <div class="info-steps">
-            <div class="info-step">
-              <div class="info-step-num">1</div>
-              <div class="info-step-text"><strong>编码校验</strong><br>验证 HS 编码有效性</div>
-            </div>
-            <div class="info-step">
-              <div class="info-step-num">2</div>
-              <div class="info-step-text"><strong>税率查询</strong><br>匹配目标国最新税则</div>
-            </div>
-            <div class="info-step">
-              <div class="info-step-num">3</div>
-              <div class="info-step-text"><strong>税费计算</strong><br>基础关税 + 附加税 + 优惠税率</div>
+            <div v-for="(s,i) in (mode==='auto'
+              ?[['1','特征拆解','提取材质、功能、用途等属性'],['2','RAG 检索','匹配 WCO 税则与历史案例'],['3','编码推理','输出 HS 编码与置信度'],['4','税费计算','查询税率，计算总税费']]
+              :[['1','编码校验','验证 HS 编码有效性'],['2','税率查询','匹配目标国最新税则'],['3','税费计算','基础关税 + 增值税 + 优惠税率']])"
+              :key="i" class="info-step">
+              <div class="info-step-num">{{ s[0] }}</div>
+              <div class="info-step-text"><strong>{{ s[1] }}</strong><br>{{ s[2] }}</div>
             </div>
           </div>
-          <div class="info-time">⏱️ 预计处理时间 ~3-5 秒</div>
-          <div class="info-scene">
-            <p><strong>适用场景：</strong></p>
-            <p>• 已知 HS 编码，快速查税率</p>
-            <p>• 验证归类结果准确性</p>
-          </div>
+          <div class="info-time">{{ mode==='auto'?'预计处理时间 ~15-20 秒':'预计处理时间 ~3-5 秒' }}</div>
         </template>
       </div>
-    </div>
-
-    <!-- 加载遮罩 -->
-    <div v-if="loading" class="loading-panel">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">{{ loadingStep >= 2 ? '正在计算税费...' : '正在进行 HS 归类推理...' }}</div>
     </div>
 
     <!-- 结果 -->
@@ -353,15 +349,22 @@ function goPipeline() {
 .info-scene { font-size: 13px; color: var(--color-gray-500); line-height: 1.7; }
 .info-scene strong { color: var(--color-gray-800); }
 
-/* 加载 */
-.loading-panel { text-align: center; padding: 48px 20px; }
-.loading-spinner {
-  width: 40px; height: 40px; border: 3px solid var(--color-gray-200);
-  border-top-color: var(--color-brand-600); border-radius: 50%;
-  animation: spin 1s linear infinite; margin: 0 auto 16px;
+/* 加载进度 */
+.progress-steps { display: flex; flex-direction: column; gap: 10px; }
+.progress-step { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--color-gray-400); transition: color 0.3s; }
+.progress-step.done { color: var(--color-gray-600); }
+.progress-step.current { color: var(--color-brand-600); font-weight: 500; }
+.progress-dot {
+  width: 22px; height: 22px; min-width: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600;
+  background: var(--color-gray-200); color: var(--color-gray-500);
+  transition: all 0.3s;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
-.loading-text { font-size: 14px; color: var(--color-gray-500); }
+.progress-step.done .progress-dot { background: #d1fae5; color: #065f46; }
+.progress-step.current .progress-dot { background: var(--color-brand-100); color: var(--color-brand-600); box-shadow: 0 0 0 3px rgba(13,148,136,.15); }
+.pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--color-brand-600); animation: pulse 1.4s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
 /* 结果 */
 .result-section { margin-top: 0; }

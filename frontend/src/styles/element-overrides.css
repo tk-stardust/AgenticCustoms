@@ -37,6 +37,16 @@
 .el-input.is-disabled .el-input__wrapper { background: var(--color-gray-100); border-color: var(--color-gray-200); color: var(--color-gray-400); cursor: not-allowed; }
 .el-input__inner { height: 40px; }
 .el-input__inner::placeholder { color: var(--color-gray-400); font-size: var(--font-size-base); }
+
+/* Chrome autofill 蓝色背景覆盖 */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  box-shadow: 0 0 0 1000px #fff inset !important;
+  -webkit-text-fill-color: var(--color-gray-800) !important;
+  transition: background-color 9999s ease-in-out 0s;
+}
 .el-textarea__inner { resize: none; min-height: 80px; }
 .el-form-item { margin-bottom: 16px; }
 .el-form-item__label { font-size: var(--font-size-base); font-weight: 500; color: var(--color-gray-800); padding-bottom: 8px; }
