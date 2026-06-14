@@ -19,13 +19,12 @@ _EDGE_EXE: str | None = None
 
 def _get_edge() -> str | None:
     global _EDGE_EXE
-    if _EDGE_EXE is not None:
-        return _EDGE_EXE or None
+    if _EDGE_EXE:
+        return _EDGE_EXE
     for p in _EDGE_PATHS:
         if os.path.exists(p):
             _EDGE_EXE = p
             return p
-    # fallback: try finding via PATH
     _EDGE_EXE = ""
     return None
 

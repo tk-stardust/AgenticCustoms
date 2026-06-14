@@ -14,6 +14,7 @@ from api.deps import require_user
 from data.db.database import async_session
 from data.db.models import ChatMessage, User
 from shared.config import settings
+from shared.llm import parse_llm_json
 from shared.logger import get_logger
 
 logger = get_logger(__name__)
@@ -122,22 +123,12 @@ _REDIRECT_MAP = {
 }
 
 
-def _parse_llm_json(text: str) -> dict:
-    """从 LLM 回复中提取 JSON"""
-    text = text.strip()
-    if "```json" in text:
-        text = text.split("```json")[1].split("```")[0]
-    elif "```" in text:
-        text = text.split("```")[1].split("```")[0]
-    return json.loads(text)
-
-
 async def _llm_json(prompt: str, message: str) -> dict:
     """调用 LLM 返回 JSON 结果"""
     try:
         llm = _get_intent_llm()
         resp = await llm.ainvoke(prompt + message)
-        return _parse_llm_json(resp.content.strip())
+        return parse_llm_json(resp.content.strip())
     except Exception:
         return {}
 

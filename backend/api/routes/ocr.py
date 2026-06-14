@@ -7,7 +7,7 @@ import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from shared.llm import chat_vision
+from shared.llm import chat_vision, parse_llm_json
 from shared.logger import get_logger
 
 logger = get_logger(__name__)
@@ -56,13 +56,8 @@ async def ocr_analyze(req: OCRRequest):
     response = await chat_vision(req.image_base64, req.image_type, OCR_PROMPT)
 
     # 解析 JSON 响应
-    text = response.strip()
-    if "```json" in text:
-        text = text.split("```json")[1].split("```")[0]
-    elif "```" in text:
-        text = text.split("```")[1].split("```")[0]
     try:
-        data = json.loads(text)
+        data = parse_llm_json(response)
     except json.JSONDecodeError:
         logger.warning("ocr.parse_failed", raw=response[:200])
         # 解析失败时尝试从原始文本提取

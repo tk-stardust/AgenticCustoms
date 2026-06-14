@@ -10,7 +10,7 @@ from domain.enums import RiskLevel
 from agents.base import BaseAgent
 from data.db.database import async_session
 from data.db.models import SanctionEntry
-from shared.llm import chat
+from shared.llm import chat, parse_llm_json
 from shared.logger import get_logger
 
 logger = get_logger(__name__)
@@ -94,13 +94,8 @@ class ComplianceCheckerAgent(BaseAgent[ComplianceResult]):
         return result
 
     def _parse_response(self, response: str) -> ComplianceResult:
-        text = response.strip()
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0]
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0]
         try:
-            data = json.loads(text)
+            data = parse_llm_json(response)
         except json.JSONDecodeError:
             logger.error("compliance.parse_failed", raw_response=response[:500])
             return ComplianceResult(risk_level=RiskLevel.YELLOW, summary="LLM 响应解析失败，请人工审核")

@@ -1,6 +1,7 @@
 """LLM 调用适配器——封装 DashScope Qwen-Plus 的 OpenAI 兼容接口"""
 
 import asyncio
+import json
 
 import httpx
 
@@ -111,3 +112,13 @@ async def chat_vision(
                     logger.error("llm_vision.exhausted", attempts=attempt + 1, error=last_error[:200])
 
     raise RuntimeError(f"视觉模型调用失败（重试 {MAX_RETRIES} 次后仍失败）：{last_error}")
+
+
+def parse_llm_json(text: str) -> dict:
+    """从 LLM 回复文本中提取 JSON，自动处理 ```json 代码块"""
+    text = text.strip()
+    if "```json" in text:
+        text = text.split("```json")[1].split("```")[0]
+    elif "```" in text:
+        text = text.split("```")[1].split("```")[0]
+    return json.loads(text)

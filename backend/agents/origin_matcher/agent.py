@@ -8,7 +8,7 @@ from domain.origin_result import OriginResult
 from agents.base import BaseAgent
 from data.db.database import async_session
 from data.db.models import TariffSchedule
-from shared.llm import chat
+from shared.llm import chat, parse_llm_json
 from shared.logger import get_logger
 
 logger = get_logger(__name__)
@@ -76,13 +76,8 @@ class OriginMatcherAgent(BaseAgent[OriginResult]):
         return result
 
     def _parse_response(self, response: str, hs_code: str) -> OriginResult:
-        text = response.strip()
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0]
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0]
         try:
-            data = json.loads(text)
+            data = parse_llm_json(response)
         except json.JSONDecodeError:
             logger.error("origin.parse_failed", raw_response=response[:500])
             return OriginResult(hs_code=hs_code, note="LLM 响应解析失败")

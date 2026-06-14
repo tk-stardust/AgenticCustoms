@@ -9,7 +9,7 @@ from agents.base import BaseAgent
 from rag.retriever import retrieve
 from rag.vector_store import get_collection
 from rag.embedding import embed_texts
-from shared.llm import chat
+from shared.llm import chat, parse_llm_json
 from shared.logger import get_logger
 
 logger = get_logger(__name__)
@@ -113,13 +113,8 @@ class HsClassifierAgent(BaseAgent[HsCodeResult]):
 
         :param response: LLM 原始回复文本，可能包裹在 ```json 代码块中
         """
-        text = response.strip()
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0]
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0]
         try:
-            data = json.loads(text)
+            data = parse_llm_json(response)
         except json.JSONDecodeError:
             # 解析失败时返回退化结果，前端据此区分"无匹配"和"格式异常"
             logger.warning("hs_classifier.parse_failed", response=response[:200])
