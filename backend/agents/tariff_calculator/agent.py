@@ -23,9 +23,9 @@ HS编码：{hs_code}
 {schedules}
 
 ## 要求
-1. 逐项列出：基础关税、增值税、反倾销税（如有）、FTA 优惠税率（如适用）
-2. 综合税率 = 各项税率之和
-3. 如有 FTA 优惠，填写 fta_applied（FTA名称）和 fta_saving（税率差额，百分点）
+1. items 逐项列出：基础关税、增值税、反倾销税（如有），rate 填 schedule 中标注的法定税率
+2. total_rate = 各项税率之和
+3. 如 schedule 中有 FTA 信息，填写 fta_applied（协定名）和 fta_saving（可减免的百分点）
 4. 如果申报价值为 0，note 注明"未提供申报价值"
 5. 金额计算由程序完成，你只需输出税率
 
@@ -33,15 +33,16 @@ HS编码：{hs_code}
 ```json
 {{
   "items": [
-    {{"name": "基础关税", "rate": 5.0, "note": ""}},
-    {{"name": "增值税", "rate": 13.0, "note": ""}}
+    {{"name": "基础关税", "rate": 2.5, "note": ""}},
+    {{"name": "增值税", "rate": 0.0, "note": ""}}
   ],
-  "total_rate": 18.0,
-  "fta_applied": null,
-  "fta_saving": null,
+  "total_rate": 2.5,
+  "fta_applied": "USMCA",
+  "fta_saving": 2.5,
   "data_missing": false
 }}
-```"""
+```
+上例中基础关税法定税率 2.5%，USMCA 优惠税率 0%，故 fta_saving=2.5，total_rate 仍为 2.5"""
 
 
 class TariffCalculatorAgent(BaseAgent[TariffResult]):
@@ -75,8 +76,9 @@ class TariffCalculatorAgent(BaseAgent[TariffResult]):
             )
 
         schedules = "\n".join(
-            f"- {r.hs_code_prefix}: 基础{r.base_rate}% 增值税{r.vat_rate}% "
-            f"反倾销{r.anti_dumping_rate}% FTA:{r.preferential_rate or '—'} ({r.fta_name or '—'})"
+            f"- {r.hs_code_prefix}: 法定基础关税{r.base_rate}% 增值税{r.vat_rate}% "
+            f"反倾销{r.anti_dumping_rate}%"
+            + (f" | FTA: {r.fta_name} 可减免 {r.base_rate - r.preferential_rate} 个百分点" if r.fta_name and r.preferential_rate is not None else "")
             for r in rows
         )
 
@@ -84,10 +86,10 @@ class TariffCalculatorAgent(BaseAgent[TariffResult]):
             hs_code=hs_code, country=country, schedules=schedules,
             declared_value=declared_value, quantity=quantity)
         messages = [{"role": "user", "content": prompt}]
-        response = await chat(messages, temperature=0.1, max_tokens=512)
+        response = await chat(messages, temperature=0.1, max_tokens=1024)
 
         result = self._parse_response(response, hs_code, country, declared_value)
-        logger.info("tariff.done", total_rate=result.total_rate)
+        logger.info("tariff.done", total_rate=result.total_rate, fta_applied=result.fta_applied, fta_saving=result.fta_saving)
         return result
 
     def _parse_response(self, response: str, hs_code: str, country: str,
@@ -101,6 +103,7 @@ class TariffCalculatorAgent(BaseAgent[TariffResult]):
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
+            logger.error("tariff.parse_failed", raw_response=response[:500])
             return TariffResult(hs_code=hs_code, country=country, items=[], total_rate=0.0)
         fta = data.get("fta_applied")
         if isinstance(fta, bool) or fta is True or fta is False:

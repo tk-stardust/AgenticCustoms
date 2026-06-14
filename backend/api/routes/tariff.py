@@ -58,9 +58,9 @@ async def calculate_tariff(
 
         commodity = Commodity(
             name=req.name or "未命名商品",
-            description=req.description,
-            material=req.material,
-            function=req.function,
+            description=req.description or req.name or "未命名商品",
+            material=req.material or None,
+            function=req.function or None,
         )
         hs_result = await hs_agent.run(commodity)
         hs_code = hs_result.code

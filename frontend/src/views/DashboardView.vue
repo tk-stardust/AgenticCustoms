@@ -13,6 +13,21 @@ use([PieChart, BarChart, TitleComponent, TooltipComponent, LegendComponent, Grid
 
 const router = useRouter()
 const records = ref<HistoryRecord[]>([])
+
+const statusLabels: Record<string, string> = { completed: '已完成', failed: '失败' }
+const riskMap: Record<string, { label: string; type: string }> = {
+  green: { label: '低风险', type: 'success' },
+  yellow: { label: '中风险', type: 'warning' },
+  red: { label: '高风险', type: 'danger' },
+}
+function dashboardRisk(row: HistoryRecord) {
+  const rl = (row.results as any)?.risk_level
+  if (rl && riskMap[rl]) return riskMap[rl]
+  const passed = (row.results as any)?.cross_check_passed
+  if (passed === false) return { label: '高风险', type: 'danger' }
+  if (passed === true) return { label: '低风险', type: 'success' }
+  return null
+}
 const stats = ref<DashboardStats>({ total: 0, pass_rate: 100, warnings: 0, hs_codes: 0, by_country: [], by_risk: [] })
 const chartRecords = ref<HistoryRecord[]>([])
 const loading = ref(false)
@@ -30,6 +45,10 @@ async function loadData() {
 
 onMounted(loadData)
 
+const countryNames: Record<string, string> = {
+  US: '美国', EU: '欧盟', JP: '日本', KR: '韩国', CN: '中国', VN: '越南', GB: '英国', AU: '澳大利亚',
+}
+
 const pieOption = computed(() => ({
   title: { text: '申报国家分布', left: 'center', textStyle: { fontSize: 14, color: '#334155' } },
   tooltip: { trigger: 'item' as const },
@@ -37,7 +56,7 @@ const pieOption = computed(() => ({
   series: [{
     type: 'pie' as const, radius: ['45%', '72%'],
     data: stats.value.by_country?.length
-      ? stats.value.by_country.map(d => ({ name: d.country, value: d.count }))
+      ? stats.value.by_country.map(d => ({ name: countryNames[d.country] || d.country, value: d.count }))
       : [
         { name: '🇺🇸 美国', value: 45, itemStyle: { color: '#3b82f6' } },
         { name: '🇪🇺 欧盟', value: 30, itemStyle: { color: '#8b5cf6' } },
@@ -140,16 +159,21 @@ function goRiskHistory() {
             <template #default="{row}"><code>{{ row.hs_code }}</code></template>
           </el-table-column>
           <el-table-column label="目标国" width="100">
-            <template #default="{row}"><el-tag size="small" round>{{ row.target_country }}</el-tag></template>
+            <template #default="{row}"><el-tag size="small" round>{{ countryNames[row.target_country] || row.target_country }}</el-tag></template>
           </el-table-column>
-          <el-table-column label="风险等级" width="120">
+          <el-table-column label="风险等级" width="100">
             <template #default="{row}">
-              <el-tag :type="(row.results as any)?.cross_check_passed ? 'success' : 'danger'" size="small" effect="dark" round>
-                {{ (row.results as any)?.cross_check_passed ? '🟢 低风险' : '🔴 高风险' }}
-              </el-tag>
+              <template v-if="dashboardRisk(row)">
+                <el-tag :type="dashboardRisk(row)!.type as any" size="small" effect="dark" round>{{ dashboardRisk(row)!.label }}</el-tag>
+              </template>
+              <span v-else style="font-size:12px;color:#94a3b8">—</span>
             </template>
           </el-table-column>
-          <el-table-column prop="status" label="状态" width="100"/>
+          <el-table-column label="状态" width="90">
+            <template #default="{row}">
+              <el-tag :type="row.status==='completed'?'success':'danger'" size="small" effect="dark" round>{{ statusLabels[row.status] || row.status }}</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column prop="created_at" label="时间" width="180"/>
         </el-table>
       </div>

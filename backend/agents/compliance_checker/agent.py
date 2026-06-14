@@ -87,7 +87,7 @@ class ComplianceCheckerAgent(BaseAgent[ComplianceResult]):
             sanctions=sanctions_text,
         )
         messages = [{"role": "user", "content": prompt}]
-        response = await chat(messages, temperature=0.1, max_tokens=512)
+        response = await chat(messages, temperature=0.1, max_tokens=1024)
 
         result = self._parse_response(response)
         logger.info("compliance.done", risk=result.risk_level)
@@ -102,6 +102,7 @@ class ComplianceCheckerAgent(BaseAgent[ComplianceResult]):
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
+            logger.error("compliance.parse_failed", raw_response=response[:500])
             return ComplianceResult(risk_level=RiskLevel.YELLOW, summary="LLM 响应解析失败，请人工审核")
         return ComplianceResult(
             risk_level=RiskLevel(data.get("risk_level", "green")),

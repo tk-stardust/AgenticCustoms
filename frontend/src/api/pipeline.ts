@@ -22,9 +22,13 @@ export async function runPipelineSSE(
   onProgress: ProgressCallback,
   signal?: AbortSignal,
 ): Promise<PipelineFullResponse> {
+  const token = localStorage.getItem('token')
   const resp = await fetch(`/api/pipeline/stream?target_country=${targetCountry}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(commodity),
     signal,
   })

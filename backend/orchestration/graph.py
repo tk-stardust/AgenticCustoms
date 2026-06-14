@@ -164,6 +164,7 @@ async def run_pipeline_stream(commodity, target_country: str) -> AsyncGenerator[
     logger.info("pipeline_stream.done")
     yield _sse("done", {
         "documents": doc.model_dump(),
+        "hs_result": hs_result.model_dump(),
         "tariff_result": tariff_result.model_dump(),
         "compliance_result": compliance_result.model_dump(),
         "origin_result": origin_result.model_dump(),

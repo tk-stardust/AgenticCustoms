@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onDeactivated } from 'vue'
+import { ref, computed, onMounted, onDeactivated, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
@@ -16,22 +16,56 @@ const form = ref({
   hsCode: '', targetCountry: '', declaredValue: '',
 })
 onMounted(() => {
+  // 从聊天助手跳转：读取结构化参数预填表单
   const q = route.query.q as string
-  if (!q) return
-  if (/^\d{4,6}(\.\d{2,4})?$/.test(q)) {
-    mode.value = 'direct'
-    form.value.hsCode = q
-  } else {
-    form.value.name = q
+  if (q) {
+    if (/^\d{4,6}(\.\d{2,4})?$/.test(q)) {
+      mode.value = 'direct'
+      form.value.hsCode = q
+    } else {
+      form.value.name = q
+    }
+  }
+  if (route.query.name) form.value.name = route.query.name as string
+  if (route.query.description) form.value.description = route.query.description as string
+  if (route.query.material) { form.value.material = route.query.material as string; materialTags.value = (route.query.material as string).split('/').filter(Boolean) }
+  if (route.query.function) form.value.function = route.query.function as string
+  if (route.query.country) form.value.targetCountry = route.query.country as string
+  if (route.query.hs_code) { mode.value = 'direct'; form.value.hsCode = route.query.hs_code as string }
+  if (route.query.declared_value) form.value.declaredValue = route.query.declared_value as string
+  // 参数齐全 + auto 标志 → 自动开始计算
+  if (route.query.auto === '1' && (form.value.name.trim() || form.value.hsCode.trim()) && form.value.targetCountry) {
+    setTimeout(() => calculate(), 300)
   }
 })
 onDeactivated(() => {
   if (stepTimer) { clearInterval(stepTimer); stepTimer = null }
 })
+onActivated(() => {
+  if (route.query.auto === '1' && (form.value.name.trim() || form.value.hsCode.trim()) && form.value.targetCountry) {
+    setTimeout(() => calculate(), 300)
+  }
+})
 const loading = ref(false)
 const loadingStep = ref(0)
 const result = ref<TariffCalcResponse | null>(null)
 let stepTimer: ReturnType<typeof setInterval> | null = null
+const materialTags = ref<string[]>([])
+const materialInput = ref('')
+function addMaterialTag() {
+  const v = materialInput.value.trim()
+  if (!v) return
+  const parts = v.split(/[/+、,；\s]+/).filter(Boolean)
+  for (const p of parts) {
+    if (!materialTags.value.includes(p)) materialTags.value.push(p)
+  }
+  form.value.material = materialTags.value.join('/')
+  materialInput.value = ''
+}
+function removeTag(idx: number) {
+  materialTags.value.splice(idx, 1)
+  form.value.material = materialTags.value.join('/')
+}
 
 const stepTotal = computed(() => mode.value === 'auto' ? 4 : 3)
 const autoSteps = ['正在拆解商品特征...', '检索 WCO 注释与税则...', '匹配历史归类案例...', 'LLM 推理合成 + 税率查询中...']
@@ -72,10 +106,11 @@ async function calculate() {
 function reset() {
   form.value = { name: '', description: '', material: '', function: '', hsCode: '', targetCountry: '', declaredValue: '' }
   result.value = null
+  materialTags.value = []
 }
 
 const countryNames: Record<string, string> = {
-  US: '美国', EU: '欧盟', JP: '日本', KR: '韩国', CN: '中国', VN: '越南',
+  US: '美国', EU: '欧盟', VN: '越南',
 }
 
 const tariffItems = computed(() => result.value?.tariff?.items || [])
@@ -128,17 +163,21 @@ function goPipeline() {
             <el-form-item label="商品名称" required>
               <el-input v-model="form.name" placeholder="例如：蓝牙智能音箱" maxlength="100" />
             </el-form-item>
-            <el-form-item label="商品描述" required>
+            <el-form-item label="商品描述">
               <el-input v-model="form.description" type="textarea" :rows="3" placeholder="描述外观、材质、功能、用途等，越详细归类越准确" maxlength="500" />
             </el-form-item>
-            <div class="form-row">
-              <el-form-item label="材质">
-                <el-input v-model="form.material" placeholder="塑料/金属" maxlength="50" />
-              </el-form-item>
-              <el-form-item label="功能">
-                <el-input v-model="form.function" placeholder="音乐播放" maxlength="50" />
-              </el-form-item>
-            </div>
+            <el-form-item label="材质">
+              <div class="tag-input-wrap" @click="materialInput && addMaterialTag()">
+                <span v-for="(t, i) in materialTags" :key="i" class="mat-tag">
+                  {{ t }} <span class="mat-close" @click.stop="removeTag(i)">×</span>
+                </span>
+                <input v-model="materialInput" class="mat-input" placeholder="输入后回车添加，支持粘贴拆分"
+                  @keydown.enter.prevent="addMaterialTag()" @blur="addMaterialTag" />
+              </div>
+            </el-form-item>
+            <el-form-item label="功能">
+              <el-input v-model="form.function" placeholder="音乐播放" maxlength="50" />
+            </el-form-item>
             <el-form-item label="目标国家 / 地区" required>
               <el-select v-model="form.targetCountry" placeholder="请选择">
                 <el-option v-for="(name, code) in countryNames" :key="code" :value="code" :label="`${name} (${code})`" />
@@ -309,8 +348,19 @@ function goPipeline() {
 }
 .info-card { background: var(--color-gray-50); }
 
-.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-@media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+.tag-input-wrap {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  padding: 4px 8px; border: 1px solid #e2e8f0; border-radius: 10px;
+  min-height: 44px; max-height: 120px; overflow-y: auto; width: 100%; cursor: text; background: #fff;
+}
+.tag-input-wrap:focus-within { border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,.08); }
+.mat-tag {
+  padding: 2px 8px; border-radius: 999px; font-size: 12px;
+  background: rgba(13,148,136,.08); color: #0d9488;
+  display: inline-flex; align-items: center; gap: 2px;
+}
+.mat-close { cursor: pointer; font-weight: 700; color: #5eead4; }
+.mat-input { border: none; outline: none; flex: 1; min-width: 60px; font-size: 13px; background: transparent; }
 .form-hint { font-size: 12px; color: var(--color-gray-400); margin-top: 4px; }
 
 .btn-row { display: flex; gap: 12px; margin-top: 8px; }

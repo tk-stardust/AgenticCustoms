@@ -15,20 +15,24 @@ const page = ref(1)
 const pageSize = ref(10)
 
 const reportVisible = ref(false)
-const reportHtml = ref('')
+const previewType = ref<'customs' | 'origin' | 'compliance'>('customs')
+const previewHtml = ref('')
+const currentRequestId = ref('')
 
-async function viewReport(row: HistoryRecord) {
+async function openPreview(row: HistoryRecord, type: 'customs' | 'origin' | 'compliance') {
   if (!row.request_id) return
-  const { data } = await client.get(`/pipeline/report/${row.request_id}`)
-  reportHtml.value = data as string
+  currentRequestId.value = row.request_id
+  previewType.value = type
+  previewHtml.value = ''
   reportVisible.value = true
+  const { data } = await client.get(`/pipeline/report/${row.request_id}/${type}`)
+  previewHtml.value = data as string
 }
-function downloadReport() {
-  const blob = new Blob([reportHtml.value], { type: 'text/html' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url; a.download = 'agentic_customs_report.html'; a.click()
-  URL.revokeObjectURL(url)
+function downloadZip() {
+  if (currentRequestId.value) window.open(`/api/pipeline/download/${currentRequestId.value}`, '_blank')
+}
+function downloadPdf() {
+  if (currentRequestId.value) window.open(`/api/pipeline/pdf/${currentRequestId.value}/${previewType.value}`, '_blank')
 }
 async function deleteRecord(row: HistoryRecord) {
   try { await ElMessageBox.confirm(`确定删除「${row.commodity_name}」的申报记录？`, '确认删除', { type:'warning' }) }
@@ -51,10 +55,11 @@ function rerun(row: HistoryRecord) {
 }
 const loading = ref(false)
 const search = ref('')
-const filter = ref<'all'|'completed'|'pending'|'risk'>('all')
+const filter = ref<'all'|'completed'|'failed'|'risk'>('all')
 const jumpPage = ref('')
 const tableScrollRef = ref<HTMLElement | null>(null)
 const showBackTop = ref(false)
+const searchInputRef = ref<any>(null)
 
 function scrollToTop() {
   tableScrollRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
@@ -111,7 +116,7 @@ const FILTER_KEY = 'historyFilter'
 
 function readStoredFilter() {
   const q = sessionStorage.getItem(FILTER_KEY)
-  if (q === 'risk' || q === 'completed' || q === 'pending') { filter.value = q; load() }
+  if (q === 'risk' || q === 'completed' || q === 'failed') { filter.value = q; load() }
   sessionStorage.removeItem(FILTER_KEY)
 }
 
@@ -128,10 +133,22 @@ onActivated(readStoredFilter)
 const countryNames: Record<string, string> = { US: '🇺🇸 美国', EU: '🇪🇺 欧盟', VN: '🇻🇳 越南', CN: '🇨🇳 中国' }
 const statusMap: Record<string, { label: string; type: 'success'|'info'|'danger' }> = {
   completed: { label: '已完成', type: 'success' },
-  pending: { label: '处理中', type: 'info' },
   failed: { label: '失败', type: 'danger' },
 }
 
+const riskMap: Record<string, { label: string; type: 'success'|'warning'|'danger' }> = {
+  green: { label: '低风险', type: 'success' },
+  yellow: { label: '中风险', type: 'warning' },
+  red: { label: '高风险', type: 'danger' },
+}
+
+function riskLevel(row: HistoryRecord): string {
+  return (row.results as any)?.risk_level || ''
+}
+function riskLabel(row: HistoryRecord) { return riskMap[riskLevel(row)]?.label || '—' }
+function riskType(row: HistoryRecord) { return riskMap[riskLevel(row)]?.type }
+
+function onSearchClear() { setTimeout(() => searchInputRef.value?.focus(), 100) }
 function statusType(r: HistoryRecord) { return statusMap[r.status]?.type || 'info' }
 function statusLabel(r: HistoryRecord) { return statusMap[r.status]?.label || r.status }
 </script>
@@ -141,11 +158,12 @@ function statusLabel(r: HistoryRecord) { return statusMap[r.status]?.label || r.
     <div class="page-header"><h1>历史记录</h1></div>
 
     <!-- 操作栏（有数据或搜索中时显示） -->
-    <div v-if="total > 0 || search" class="toolbar">
-      <el-input v-model="search" placeholder="搜索商品名称 / HS编码" :prefix-icon="Search"
-        clearable style="width:280px" size="large" class="search-input"/>
-      <div v-if="total > 0" class="filter-tabs">
-        <button v-for="f in [{k:'all',l:'全部'},{k:'completed',l:'已完成'},{k:'pending',l:'处理中'},{k:'risk',l:'有风险'}]"
+    <div v-if="total > 0 || search || filter !== 'all'" class="toolbar">
+      <el-input ref="searchInputRef" v-model="search" placeholder="搜索商品名称 / HS编码" :prefix-icon="Search"
+        clearable style="width:280px" size="large" class="search-input"
+        @clear="onSearchClear"/>
+      <div class="filter-tabs">
+        <button v-for="f in [{k:'all',l:'全部'},{k:'completed',l:'已完成'},{k:'failed',l:'失败'},{k:'risk',l:'有风险'}]"
           :key="f.k" class="filter-btn" :class="{active:filter===f.k}" @click="filter=f.k as any">{{ f.l }}</button>
       </div>
       <div class="toolbar-actions">
@@ -167,28 +185,43 @@ function statusLabel(r: HistoryRecord) { return statusMap[r.status]?.label || r.
       <div class="table-wrap">
         <div class="table-scroll" ref="tableScrollRef" @scroll="onTableScroll">
           <el-table :data="allRecords" stripe v-loading="loading" style="width:100%" max-height="calc(100vh - 290px)">
-            <el-table-column prop="commodity_name" label="商品名称" min-width="160"/>
-            <el-table-column label="HS 编码" width="130">
+            <el-table-column label="商品名称" min-width="120">
+              <template #default="{ row }">
+                <el-tooltip :content="row.commodity_name" placement="top" :show-after="400" :disabled="(row.commodity_name||'').length <= 12">
+                  <span class="cell-name">{{ row.commodity_name }}</span>
+                </el-tooltip>
+              </template>
+            </el-table-column>
+            <el-table-column label="HS 编码" width="120">
               <template #default="{ row }"><code>{{ row.hs_code || '—' }}</code></template>
             </el-table-column>
-            <el-table-column label="目标国" width="100">
+            <el-table-column label="目标国" width="90">
               <template #default="{ row }"><el-tag size="small" round>{{ countryNames[row.target_country] || row.target_country }}</el-tag></template>
             </el-table-column>
-            <el-table-column label="状态" width="100">
+            <el-table-column label="风险等级" width="100">
+              <template #default="{ row }">
+                <el-tag v-if="riskLevel(row)" :type="riskType(row)" size="small" effect="dark" round>{{ riskLabel(row) }}</el-tag>
+                <span v-else class="cell-hint">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="90">
               <template #default="{ row }">
                 <el-tag :type="statusType(row)" size="small" effect="dark" round>{{ statusLabel(row) }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="时间" width="180">
+            <el-table-column label="时间" width="170">
               <template #default="{ row }">
-                <span class="cell-time">{{ row.created_at?.replace('T',' ').substring(0,19) }}</span>
+                <span class="cell-time">{{ row.created_at?.replace('T',' ').substring(0,16) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="160">
+            <el-table-column label="操作" width="220" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" size="small" @click="viewReport(row)">查看详情</el-button>
-                <el-button link size="small" @click="rerun(row)">重新运行</el-button>
-                <el-button link size="small" class="btn-delete" @click="deleteRecord(row)">删除</el-button>
+                <div class="cell-actions">
+                  <el-button link type="primary" size="small" v-if="row.status==='completed'" @click="openPreview(row, 'customs')">查看详情</el-button>
+                  <span v-else class="cell-hint">—</span>
+                  <el-button link size="small" type="info" @click="rerun(row)">重新运行</el-button>
+                  <el-button link size="small" type="danger" @click="deleteRecord(row)">删除</el-button>
+                </div>
               </template>
             </el-table-column>
           </el-table>
@@ -222,10 +255,16 @@ function statusLabel(r: HistoryRecord) { return statusMap[r.status]?.label || r.
         </div>
       </div>
     </template>
-    <el-dialog v-model="reportVisible" title="申报报告" width="800px" top="5vh">
-      <iframe :srcdoc="reportHtml" style="width:100%;height:65vh;border:none;border-radius:8px;background:#fff"></iframe>
+    <el-dialog v-model="reportVisible" :title="previewType==='customs'?'报关单草单':previewType==='origin'?'原产地证书申请书':'合规声明'" width="80vw" top="3vh" destroy-on-close>
+      <div class="preview-tabs">
+        <button :class="['preview-tab', {active:previewType==='customs'}]" @click="openPreview({request_id:currentRequestId} as any, 'customs')">📋 报关单</button>
+        <button :class="['preview-tab', {active:previewType==='origin'}]" @click="openPreview({request_id:currentRequestId} as any, 'origin')">📜 原产地证</button>
+        <button :class="['preview-tab', {active:previewType==='compliance'}]" @click="openPreview({request_id:currentRequestId} as any, 'compliance')">🛡️ 合规声明</button>
+      </div>
+      <iframe :srcdoc="previewHtml" style="width:100%;height:60vh;border:none;border-radius:8px;background:#fff;margin-top:12px"></iframe>
       <template #footer>
-        <el-button type="primary" @click="downloadReport">📥 下载</el-button>
+        <el-button type="primary" @click="downloadPdf()">📄 下载 PDF</el-button>
+        <el-button type="success" @click="downloadZip">📥 下载 ZIP</el-button>
         <el-button @click="reportVisible = false">关闭</el-button>
       </template>
     </el-dialog>
@@ -269,7 +308,13 @@ function statusLabel(r: HistoryRecord) { return statusMap[r.status]?.label || r.
 :deep(.el-table tr:hover td){background:#f8fafc}
 code{font-family:'JetBrains Mono',monospace;font-size:13px}
 .cell-time{font-size:12px;color:#94a3b8}
-.btn-delete:hover{color:#ef4444 !important}
+.cell-name{display:block;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cell-actions{display:flex;align-items:center;white-space:nowrap}
+.cell-actions :deep(.el-button){padding:4px 6px;border-radius:6px;transition:all .2s}
+.cell-actions :deep(.el-button--primary:hover){background:#0d9488;color:#fff}
+.cell-actions :deep(.el-button--info:hover){background:#64748b;color:#fff}
+.cell-actions :deep(.el-button--danger:hover){background:#ef4444;color:#fff}
+.cell-hint{font-size:12px;color:#94a3b8}
 
 /* ===== 自定义分页器 ===== */
 .history-pagination {
@@ -315,6 +360,11 @@ code{font-family:'JetBrains Mono',monospace;font-size:13px}
 .back-top-btn:hover { box-shadow: 0 4px 16px rgba(0,0,0,.12); transform: translateY(-2px); }
 .fade-enter-active, .fade-leave-active { transition: opacity .25s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* ===== 预览弹窗 ===== */
+.preview-tabs { display: flex; gap: 4px; background: #f1f5f9; padding: 3px; border-radius: 10px; }
+.preview-tab { padding: 8px 20px; border: none; border-radius: 8px; font-size: 13px; color: #64748b; background: transparent; cursor: pointer; transition: all .2s; }
+.preview-tab.active { background: #fff; color: #0d9488; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
 
 /* ===== 页脚 ===== */
 .page-footer { text-align: center; padding: 16px; font-size: 12px; color: #94a3b8; }

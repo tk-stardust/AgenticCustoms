@@ -43,12 +43,13 @@ async def check_compliance(
     logger.info("api.compliance", name=req.name, country=req.target_country)
 
     hs_code = req.hs_code
+    desc = req.description or req.name
     if not hs_code:
         commodity = Commodity(
             name=req.name,
-            description=req.description,
-            material=req.material,
-            function=req.function,
+            description=desc,
+            material=req.material or None,
+            function=req.function or None,
         )
         hs_result = await hs_agent.run(commodity)
         hs_code = hs_result.code
@@ -56,9 +57,9 @@ async def check_compliance(
     agent = ComplianceCheckerAgent()
     commodity = Commodity(
         name=req.name,
-        description=req.description,
-        material=req.material,
-        function=req.function,
+        description=desc,
+        material=req.material or None,
+        function=req.function or None,
     )
     result = await agent.run(commodity=commodity, hs_code=hs_code, country=req.target_country)
 

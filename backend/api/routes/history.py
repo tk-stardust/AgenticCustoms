@@ -38,9 +38,9 @@ async def list_history(
         if filter == "completed":
             query = query.where(Declaration.status == "completed")
             count_q = count_q.where(Declaration.status == "completed")
-        elif filter == "pending":
-            query = query.where(Declaration.status != "completed")
-            count_q = count_q.where(Declaration.status != "completed")
+        elif filter == "failed":
+            query = query.where(Declaration.status == "failed")
+            count_q = count_q.where(Declaration.status == "failed")
         elif filter == "risk":
             query = query.where(
                 Declaration.results != None,

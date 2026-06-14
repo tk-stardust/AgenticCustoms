@@ -3,8 +3,11 @@ import client from './client'
 interface ChatResponse {
   reply: string
   action?: string
-  redirect?: { page: string; label: string; force?: boolean }
+  redirect?: { page: string; label: string; force?: boolean; query?: string }
   session_id: string
+  params?: Record<string, unknown> | null
+  missing?: string[] | null
+  complete?: boolean
 }
 
 interface HistoryItem {

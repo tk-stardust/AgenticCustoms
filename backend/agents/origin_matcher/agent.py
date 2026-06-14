@@ -69,7 +69,7 @@ class OriginMatcherAgent(BaseAgent[OriginResult]):
 
         prompt = ORIGIN_PROMPT.format(hs_code=hs_code, country=country, fta_data=fta_data)
         messages = [{"role": "user", "content": prompt}]
-        response = await chat(messages, temperature=0.1, max_tokens=512)
+        response = await chat(messages, temperature=0.1, max_tokens=1024)
 
         result = self._parse_response(response, hs_code)
         logger.info("origin.done", ftas=result.applicable_ftas)
@@ -84,6 +84,7 @@ class OriginMatcherAgent(BaseAgent[OriginResult]):
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
+            logger.error("origin.parse_failed", raw_response=response[:500])
             return OriginResult(hs_code=hs_code, note="LLM 响应解析失败")
         return OriginResult(
             hs_code=hs_code,

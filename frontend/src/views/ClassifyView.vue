@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onDeactivated, onMounted } from 'vue'
+import { ref, computed, onDeactivated, onMounted, onActivated } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { usePipelineStore } from '@/stores/pipeline'
@@ -13,12 +13,22 @@ const store = usePipelineStore()
 const emptyClassify = (): Commodity => ({ name:'',description:'',material:'',function:'',usage:'' })
 const form = ref<Commodity>(emptyClassify())
 onMounted(() => {
+  // 从聊天助手跳转：读取结构化参数预填表单
   const q = route.query.q as string
   if (q) form.value.name = q
+  if (route.query.name) form.value.name = route.query.name as string
+  if (route.query.description) form.value.description = route.query.description as string
+  if (route.query.material) { form.value.material = route.query.material as string; materialTags.value = (route.query.material as string).split('/').filter(Boolean) }
+  if (route.query.function) form.value.function = route.query.function as string
+  // 参数齐全 + auto 标志 → 自动开始归类
+  if (route.query.auto === '1' && form.value.name.trim() && form.value.description.trim()) {
+    setTimeout(() => onSubmit(), 300)
+  }
 })
 function clearForm() {
   form.value = emptyClassify()
   ocrResult.value = null
+  materialTags.value = []
 }
 function clearResult() {
   store.reset()
@@ -26,12 +36,33 @@ function clearResult() {
 onDeactivated(() => {
   if (stepTimer) { clearInterval(stepTimer); stepTimer = null }
 })
+onActivated(() => {
+  if (route.query.auto === '1' && form.value.name.trim() && form.value.description.trim()) {
+    setTimeout(() => onSubmit(), 300)
+  }
+})
 const loadingStep = ref(0)
 const ocrLoading = ref(false)
 const ocrResult = ref<Commodity | null>(null)  // 仅存 OCR 识别结果，手动输入不触发
 const lastFileKey = ref('')   // 上次上传的文件标识（name+size+lastModified）
 const formEdited = ref(false)  // OCR 后用户是否手动改过表单
 function onFieldEdit() { formEdited.value = true }
+const materialTags = ref<string[]>([])
+const materialInput = ref('')
+function addMaterialTag() {
+  const v = materialInput.value.trim()
+  if (!v) return
+  const parts = v.split(/[/+、,；\s]+/).filter(Boolean)
+  for (const p of parts) {
+    if (!materialTags.value.includes(p)) materialTags.value.push(p)
+  }
+  form.value.material = materialTags.value.join('/')
+  materialInput.value = ''
+}
+function removeTag(idx: number) {
+  materialTags.value.splice(idx, 1)
+  form.value.material = materialTags.value.join('/')
+}
 let stepTimer: ReturnType<typeof setInterval> | null = null
 
 async function onUpload(e: Event) {
@@ -51,6 +82,7 @@ async function onUpload(e: Event) {
     form.value.name = result.name || form.value.name
     form.value.description = result.description || form.value.description
     form.value.material = result.material || form.value.material
+    if (result.material) materialTags.value = result.material.split('/').filter(Boolean)
     form.value.function = result.function || form.value.function
     form.value.usage = result.usage || form.value.usage
     ocrResult.value = { ...result }
@@ -137,11 +169,21 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
               <span v-if="ocrResult.usage" class="extract-tag">用途：<b>{{ ocrResult.usage }}</b></span>
             </div>
           </div>
-          <el-row v-else :gutter="12">
-            <el-col :span="8"><el-form-item label="材质"><el-input v-model="form.material" placeholder="塑料/金属" clearable maxlength="200" @input="onFieldEdit"/></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="功能"><el-input v-model="form.function" placeholder="音乐播放" clearable maxlength="200" @input="onFieldEdit"/></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="用途"><el-input v-model="form.usage" placeholder="家庭娱乐" clearable maxlength="200" @input="onFieldEdit"/></el-form-item></el-col>
-          </el-row>
+          <template v-else>
+            <el-form-item label="材质">
+              <div class="tag-input-wrap" @click="materialInput && addMaterialTag()">
+                <span v-for="(t, i) in materialTags" :key="i" class="mat-tag">
+                  {{ t }} <span class="mat-close" @click.stop="removeTag(i)">×</span>
+                </span>
+                <input v-model="materialInput" class="mat-input" placeholder="输入后回车添加，支持粘贴拆分"
+                  @keydown.enter.prevent="addMaterialTag()" @blur="addMaterialTag" />
+              </div>
+            </el-form-item>
+            <el-row :gutter="12">
+              <el-col :span="12"><el-form-item label="功能"><el-input v-model="form.function" placeholder="音乐播放" clearable maxlength="200" @input="onFieldEdit"/></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="用途"><el-input v-model="form.usage" placeholder="家庭娱乐" clearable maxlength="200" @input="onFieldEdit"/></el-form-item></el-col>
+            </el-row>
+          </template>
           <div class="btn-group">
             <button type="button" class="btn-primary" :class="{loading:store.classifyLoading}" :disabled="store.classifyLoading" @click="onSubmit">
               <el-icon v-if="!store.classifyLoading" :size="18" style="margin-right:6px"><Search/></el-icon>
@@ -252,6 +294,19 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
 .ai-edit-btn{margin-left:auto;padding:1px 8px;border:1px solid #0d9488;border-radius:4px;background:none;color:#0d9488;font-size:11px;cursor:pointer}
 .ai-edit-btn:hover{background:#0d9488;color:#fff}
 
+.tag-input-wrap {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  padding: 4px 8px; border: 1px solid #e2e8f0; border-radius: 10px;
+  min-height: 44px; max-height: 120px; overflow-y: auto; width: 100%; cursor: text; background: #fff;
+}
+.tag-input-wrap:focus-within { border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,.08); }
+.mat-tag {
+  padding: 2px 8px; border-radius: 999px; font-size: 12px;
+  background: rgba(13,148,136,.08); color: #0d9488;
+  display: inline-flex; align-items: center; gap: 2px;
+}
+.mat-close { cursor: pointer; font-weight: 700; color: #5eead4; }
+.mat-input { border: none; outline: none; flex: 1; min-width: 60px; font-size: 13px; background: transparent; }
 .btn-group{display:flex;gap:12px;margin-top:8px}
 .btn-primary{display:inline-flex;align-items:center;padding:12px 28px;font-size:16px;font-weight:600;color:#fff;background:linear-gradient(135deg,#0d9488,#0f766e);border:none;border-radius:10px;cursor:pointer;transition:all .2s;will-change:transform}
 .btn-primary:hover:not(:disabled){filter:brightness(1.08);box-shadow:0 4px 12px rgba(13,148,136,.3);transform:scale(1.02)}

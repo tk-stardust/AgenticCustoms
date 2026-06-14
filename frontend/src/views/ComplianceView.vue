@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onActivated } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { checkCompliance } from '@/api/compliance'
@@ -8,14 +8,46 @@ import type { ComplianceResponse } from '@/api/compliance'
 const route = useRoute()
 const form = ref({ name: '', description: '', material: '', function: '', targetCountry: '', hsCode: '' })
 onMounted(() => {
+  // 从聊天助手跳转：读取结构化参数预填表单
   const q = route.query.q as string
   if (q) form.value.name = q
+  if (route.query.name) form.value.name = route.query.name as string
+  if (route.query.description) form.value.description = route.query.description as string
+  if (route.query.material) { form.value.material = route.query.material as string; materialTags.value = (route.query.material as string).split('/').filter(Boolean) }
+  if (route.query.function) form.value.function = route.query.function as string
+  if (route.query.country) form.value.targetCountry = route.query.country as string
+  if (route.query.hs_code) form.value.hsCode = route.query.hs_code as string
+  // 参数齐全 + auto 标志 → 自动开始校验
+  if (route.query.auto === '1' && form.value.name.trim() && form.value.targetCountry) {
+    setTimeout(() => onSubmit(), 300)
+  }
+})
+onActivated(() => {
+  if (route.query.auto === '1' && form.value.name.trim() && form.value.targetCountry) {
+    setTimeout(() => onSubmit(), 300)
+  }
 })
 const loading = ref(false)
 const result = ref<ComplianceResponse | null>(null)
+const materialTags = ref<string[]>([])
+const materialInput = ref('')
+function addMaterialTag() {
+  const v = materialInput.value.trim()
+  if (!v) return
+  const parts = v.split(/[/+、,；\s]+/).filter(Boolean)
+  for (const p of parts) {
+    if (!materialTags.value.includes(p)) materialTags.value.push(p)
+  }
+  form.value.material = materialTags.value.join('/')
+  materialInput.value = ''
+}
+function removeTag(idx: number) {
+  materialTags.value.splice(idx, 1)
+  form.value.material = materialTags.value.join('/')
+}
 
 const countryNames: Record<string, string> = {
-  US: '美国', EU: '欧盟', JP: '日本', KR: '韩国', CN: '中国', VN: '越南',
+  US: '美国', EU: '欧盟', VN: '越南',
 }
 
 const riskColor: Record<string, string> = { green: '#16a34a', yellow: '#ca8a04', red: '#dc2626' }
@@ -42,6 +74,7 @@ async function onSubmit() {
 function reset() {
   form.value = { name: '', description: '', material: '', function: '', targetCountry: '', hsCode: '' }
   result.value = null
+  materialTags.value = []
 }
 </script>
 
@@ -63,14 +96,18 @@ function reset() {
           <el-form-item label="商品描述">
             <el-input v-model="form.description" type="textarea" :rows="3" placeholder="描述外观、材质、功能等" maxlength="500" />
           </el-form-item>
-          <div class="form-row">
-            <el-form-item label="材质">
-              <el-input v-model="form.material" placeholder="塑料/金属" maxlength="50" />
-            </el-form-item>
-            <el-form-item label="功能">
-              <el-input v-model="form.function" placeholder="音乐播放" maxlength="50" />
-            </el-form-item>
-          </div>
+          <el-form-item label="材质">
+            <div class="tag-input-wrap" @click="materialInput && addMaterialTag()">
+              <span v-for="(t, i) in materialTags" :key="i" class="mat-tag">
+                {{ t }} <span class="mat-close" @click.stop="removeTag(i)">×</span>
+              </span>
+              <input v-model="materialInput" class="mat-input" placeholder="输入后回车添加，支持粘贴拆分"
+                @keydown.enter.prevent="addMaterialTag()" @blur="addMaterialTag" />
+            </div>
+          </el-form-item>
+          <el-form-item label="功能">
+            <el-input v-model="form.function" placeholder="音乐播放" maxlength="50" />
+          </el-form-item>
           <el-form-item label="HS 编码（可选）">
             <el-input v-model="form.hsCode" placeholder="已知编码可直接填写" maxlength="12" />
           </el-form-item>
@@ -162,7 +199,19 @@ function reset() {
 
 .panel { background: #fff; border: 1px solid var(--color-gray-200); border-radius: 16px; padding: 24px; }
 .panel-header { font-size: 16px; font-weight: 600; color: var(--color-gray-800); margin-bottom: 20px; }
-.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tag-input-wrap {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  padding: 4px 8px; border: 1px solid #e2e8f0; border-radius: 10px;
+  min-height: 44px; max-height: 120px; overflow-y: auto; width: 100%; cursor: text; background: #fff;
+}
+.tag-input-wrap:focus-within { border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,.08); }
+.mat-tag {
+  padding: 2px 8px; border-radius: 999px; font-size: 12px;
+  background: rgba(13,148,136,.08); color: #0d9488;
+  display: inline-flex; align-items: center; gap: 2px;
+}
+.mat-close { cursor: pointer; font-weight: 700; color: #5eead4; }
+.mat-input { border: none; outline: none; flex: 1; min-width: 60px; font-size: 13px; background: transparent; }
 .btn-row { display: flex; gap: 12px; margin-top: 8px; }
 .btn-primary {
   background: var(--color-brand-600); color: #fff; border: none;

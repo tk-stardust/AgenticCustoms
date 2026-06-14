@@ -1,16 +1,14 @@
 <script setup lang="ts">
-import { ref, nextTick, onMounted } from 'vue'
+import { ref, nextTick, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { sendMessage, fetchHistory, clearHistory } from '@/api/chat'
+import { sendMessage } from '@/api/chat'
+import { useChatStore } from '@/stores/chat'
 
+const store = useChatStore()
 const router = useRouter()
 const input = ref('')
-const messages = ref<{ role: string; content: string; time: string }[]>([])
-const loading = ref(false)
-const sessionId = ref((() => { try { return localStorage.getItem('chat-session') || '' } catch { return '' } })())
-const pendingRedirect = ref<{ page: string; label: string; force?: boolean } | null>(null)
-const pendingQuery = ref('')
+const chatEl = ref<HTMLElement | null>(null)
 
 const quickQuestions = [
   '什么是 HS 编码？',
@@ -24,83 +22,81 @@ function genTime() {
 }
 
 async function loadHistory() {
-  if (!sessionId.value) return
-  try {
-    const list = await fetchHistory(sessionId.value)
-    messages.value = list.map(m => ({ ...m, time: '' }))
-  } catch { /* no history yet */ }
+  const ok = await store.loadHistory()
+  if (ok) { await nextTick(); scrollBottom() }
 }
 
-onMounted(loadHistory)
+onMounted(() => { store.initSessionId(); loadHistory() })
+onActivated(loadHistory)
 
 async function send(text?: string) {
   const msg = (text || input.value).trim()
-  if (!msg || loading.value) return
+  if (!msg || store.loading) return
 
   // 处理跳转确认
-  if (pendingRedirect.value) {
+  if (store.pendingRedirect) {
     if (/^[是不好]/i.test(msg)) {
-      if (pendingRedirect.value.force) {
-        messages.value.push({ role: 'assistant', content: '该功能需要在专用流程中完成，聊天暂不支持。请前往一键全流程页面。', time: genTime() })
-        pendingRedirect.value = null
-        pendingQuery.value = ''
+      if (store.pendingRedirect.force) {
+        store.pushMessage('assistant', '该功能需要在专用流程中完成，聊天暂不支持。请前往一键全流程页面。', genTime())
+        store.clearRedirect()
+        await nextTick()
+        scrollBottom()
         return
       } else {
-        // 不跳转 → 用 skip_redirect 重新请求，在对话中直接回答
-        const q = pendingQuery.value
-        pendingRedirect.value = null
-        pendingQuery.value = ''
+        // 不跳转 → 用 skip_redirect 重新请求原始问题，在对话中直接回答
+        const originalQuery = store.pendingOriginalQuery
+        store.clearRedirect()
         input.value = ''
-        loading.value = true
-        messages.value.push({ role: 'user', content: '不跳转，直接回答', time: genTime() })
+        store.pushMessage('user', '不跳转，直接回答', genTime())
+        store.loading = true
+        await nextTick()
+        scrollBottom()
         try {
-          const res = await sendMessage(q, sessionId.value || undefined, true)
-          if (!sessionId.value) { sessionId.value = res.session_id; try { localStorage.setItem('chat-session', res.session_id) } catch { /* ok */ } }
-          messages.value.push({ role: 'assistant', content: res.reply, time: genTime() })
+          const res = await sendMessage(originalQuery, store.sessionId || undefined, true)
+          if (!store.sessionId) store.saveSessionId(res.session_id)
+          store.pushMessage('assistant', res.reply, genTime())
         } catch (e: any) { ElMessage.error(e?.message || '请求失败') }
-        finally { loading.value = false }
+        finally { store.loading = false }
         return
       }
     } else if (/^[跳转是好的]/i.test(msg)) {
-      const r = pendingRedirect.value
-      const q = encodeURIComponent(pendingQuery.value)
-      pendingRedirect.value = null
-      pendingQuery.value = ''
-      router.push(`/${r.page}?q=${q}`)
+      const r = store.pendingRedirect
+      const queryStr = r?.query || ''
+      const auto = store.pendingComplete ? '&auto=1' : ''
+      store.clearRedirect()
+      router.push(`/${r!.page}?${queryStr}${auto}`)
       return
     }
-    pendingRedirect.value = null
-    pendingQuery.value = ''
+    store.clearRedirect()
   }
 
-  messages.value.push({ role: 'user', content: msg, time: genTime() })
+  store.pushMessage('user', msg, genTime())
   input.value = ''
-  loading.value = true
+  store.loading = true
+  await nextTick()
+  scrollBottom()
 
   try {
-    const res = await sendMessage(msg, sessionId.value || undefined)
-    if (!sessionId.value) {
-      sessionId.value = res.session_id
-      try { localStorage.setItem('chat-session', res.session_id) } catch { /* ok */ }
-    }
+    const res = await sendMessage(msg, store.sessionId || undefined)
+    if (!store.sessionId) store.saveSessionId(res.session_id)
 
     if (res.action === 'confirm_redirect') {
-      pendingRedirect.value = res.redirect || null
-      pendingQuery.value = msg
+      store.setRedirect(res.redirect || null, res.complete || false, msg)
     } else if (res.action === 'redirect') {
-      // Agent 直接跳转，不弹确认卡片
       const r = res.redirect
-      const q = encodeURIComponent(msg)
-      if (r) router.push(`/${r.page}?q=${q}`)
+      const queryStr = r?.query || ''
+      if (r) router.push(`/${r.page}?${queryStr}`)
     }
 
-    messages.value.push({ role: 'assistant', content: res.reply, time: genTime() })
+    store.pushMessage('assistant', res.reply, genTime())
+    if (res.action === 'confirm_redirect') {
+      await nextTick()
+      scrollBottom()
+    }
   } catch (e: any) {
     ElMessage.error(e?.message || '发送失败')
   } finally {
-    loading.value = false
-    await nextTick()
-    scrollBottom()
+    store.loading = false
   }
 }
 
@@ -112,8 +108,7 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 function scrollBottom() {
-  const el = document.querySelector('.chat-messages')
-  if (el) el.scrollTop = el.scrollHeight
+  if (chatEl.value) chatEl.value.scrollTop = chatEl.value.scrollHeight
 }
 
 async function clearChat() {
@@ -122,24 +117,20 @@ async function clearChat() {
   } catch {
     return
   }
-  if (sessionId.value) {
-    try { await clearHistory(sessionId.value) } catch { /* ok */ }
-  }
-  messages.value = []
-  pendingRedirect.value = null
+  await store.clearChat()
 }
 </script>
 
 <template>
   <div class="chat-panel">
     <!-- 顶部栏 -->
-    <div class="chat-topbar" v-if="messages.length > 0">
+    <div class="chat-topbar" v-if="store.messages.length > 0">
       <button class="chat-clear-btn" @click="clearChat">清空对话</button>
     </div>
 
     <!-- 消息区 -->
-    <div class="chat-messages">
-      <div v-if="messages.length === 0" class="chat-empty">
+    <div ref="chatEl" class="chat-messages">
+      <div v-if="store.messages.length === 0" class="chat-empty">
         <div class="chat-empty-icon">🤖</div>
         <h3>你好，我是海关智能助手</h3>
         <p>可以帮你查 HS 编码、计算关税、校验合规风险等</p>
@@ -153,7 +144,7 @@ async function clearChat() {
         </div>
       </div>
 
-      <template v-for="(msg, i) in messages" :key="i">
+      <template v-for="(msg, i) in store.messages" :key="i">
         <div :class="['chat-msg', msg.role]" :style="{ animationDelay: `${i * 0.05}s` }">
           <div class="chat-avatar">{{ msg.role === 'user' ? '👤' : '🤖' }}</div>
           <div class="chat-msg-wrap">
@@ -163,9 +154,11 @@ async function clearChat() {
         </div>
       </template>
 
-      <div v-if="pendingRedirect" class="redirect-card">
+      <div v-if="store.pendingRedirect" class="redirect-card">
         <div class="redirect-text">
-          ⚡ 检测到你想进行<strong>{{ pendingRedirect.label }}</strong>，需要跳转到对应页面吗？
+          ⚡ 检测到你想进行<strong>{{ store.pendingRedirect.label }}</strong>
+          <span v-if="store.pendingComplete" class="redirect-complete-badge">信息完整，可自动查询</span>
+          ，需要跳转吗？
         </div>
         <div class="redirect-actions">
           <button class="redirect-btn primary" @click="send('跳转')">跳转</button>
@@ -173,7 +166,7 @@ async function clearChat() {
         </div>
       </div>
 
-      <div v-if="loading" class="chat-msg assistant">
+      <div v-if="store.loading" class="chat-msg assistant">
         <div class="chat-avatar">🤖</div>
         <div>
           <div class="typing-indicator">
@@ -192,11 +185,11 @@ async function clearChat() {
           rows="2"
           placeholder="输入您的问题... (Enter 发送，Shift+Enter 换行)"
           @keydown="onKeydown"
-          :disabled="loading"
+          :disabled="store.loading"
         ></textarea>
         <div class="chat-input-actions">
-          <span class="chat-hint">{{ loading ? 'AI 正在回复...' : 'Enter 发送 · Shift+Enter 换行' }}</span>
-          <button class="chat-send-btn" :disabled="loading || !input.trim()" @click="send()">发送</button>
+          <span class="chat-hint">{{ store.loading ? 'AI 正在回复...' : 'Enter 发送 · Shift+Enter 换行' }}</span>
+          <button class="chat-send-btn" :disabled="store.loading || !input.trim()" @click="send()">发送</button>
         </div>
       </div>
     </div>
@@ -268,6 +261,11 @@ async function clearChat() {
 }
 .redirect-text { font-size: 14px; color: #92400e; margin-bottom: 10px; }
 .redirect-text strong { color: #78350f; }
+.redirect-complete-badge {
+  display: inline-block; margin-left: 6px; padding: 1px 8px;
+  background: #d1fae5; color: #065f46; border-radius: 10px;
+  font-size: 12px; font-weight: 500;
+}
 .redirect-actions { display: flex; gap: 8px; }
 .redirect-btn {
   padding: 6px 18px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: none;
