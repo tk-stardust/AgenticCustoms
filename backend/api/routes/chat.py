@@ -90,8 +90,8 @@ PAGE_PARAMS: dict[str, dict] = {
         "label": "合规校验",
     },
     "pipeline": {
-        "required": ["name", "description"],
-        "optional": ["material", "function", "usage", "declared_value", "hs_code", "country"],
+        "required": ["name", "description", "country"],
+        "optional": ["material", "function", "usage", "declared_value", "hs_code"],
         "label": "一键全流程",
     },
 }

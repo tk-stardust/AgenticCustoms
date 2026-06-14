@@ -3,6 +3,7 @@ import { ref, onMounted, onActivated } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { checkCompliance } from '@/api/compliance'
+import { COUNTRY_NAMES } from '@/constants'
 import type { ComplianceResponse } from '@/api/compliance'
 
 const route = useRoute()
@@ -44,10 +45,6 @@ function addMaterialTag() {
 function removeTag(idx: number) {
   materialTags.value.splice(idx, 1)
   form.value.material = materialTags.value.join('/')
-}
-
-const countryNames: Record<string, string> = {
-  US: '美国', EU: '欧盟', VN: '越南',
 }
 
 const riskColor: Record<string, string> = { green: '#16a34a', yellow: '#ca8a04', red: '#dc2626' }
@@ -113,7 +110,7 @@ function reset() {
           </el-form-item>
           <el-form-item label="目标国家" required>
             <el-select v-model="form.targetCountry" placeholder="请选择">
-              <el-option v-for="(n, c) in countryNames" :key="c" :value="c" :label="`${n} (${c})`" />
+              <el-option v-for="(n, c) in COUNTRY_NAMES" :key="c" :value="c" :label="`${n} (${c})`" />
             </el-select>
           </el-form-item>
         </el-form>

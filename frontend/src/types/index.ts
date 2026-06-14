@@ -1,14 +1,6 @@
 // ---- 枚举 ----
 export type RiskLevel = 'red' | 'yellow' | 'green'
 
-export type TradeRoute = 'cn_us' | 'cn_eu' | 'cn_asean'
-
-export type IntentType =
-  | 'hs_classify'
-  | 'tariff_calc'
-  | 'compliance_check'
-  | 'origin_match'
-  | 'full_pipeline'
 
 export type PipelineStep =
   | 'input'
@@ -82,12 +74,19 @@ export interface OriginResult {
   note: string
 }
 
+export interface CrossCheckItem {
+  name: string
+  passed: boolean
+  detail: string
+}
+
 export interface DeclarationDoc {
   customs_declaration: Record<string, unknown>
   origin_certificate?: Record<string, unknown>
   compliance_statement: string
   cross_check_passed: boolean
   cross_check_errors: string[]
+  cross_check_items: CrossCheckItem[]
   request_id?: string
 }
 
@@ -101,6 +100,7 @@ export interface StepError {
 export interface PipelineFullResponse {
   request_id: string
   documents: DeclarationDoc
+  hs_result: HsCodeResult
   tariff_result: TariffResult
   compliance_result: ComplianceResult
   origin_result: OriginResult
@@ -124,12 +124,4 @@ export interface TariffCalcResponse {
   hs_description: string
   product_name: string
   tariff: TariffResult
-}
-
-// ---- API ----
-
-export interface ApiResponse<T> {
-  data: T
-  message?: string
-  request_id?: string
 }

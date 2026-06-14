@@ -7,6 +7,11 @@ import type { Commodity } from '@/types'
 import { Check, Loading, Camera, QuestionFilled, MagicStick } from '@element-plus/icons-vue'
 import { ocrImage } from '@/api/ocr'
 import { runPipelineSSE } from '@/api/pipeline'
+import { COUNTRY_NAMES } from '@/constants'
+import PipelineAgentCard from '@/components/PipelineAgentCard.vue'
+import PipelineCustomsPreview from '@/components/PipelineCustomsPreview.vue'
+import PipelineOriginPreview from '@/components/PipelineOriginPreview.vue'
+import PipelineCompliancePreview from '@/components/PipelineCompliancePreview.vue'
 
 const store = usePipelineStore()
 let abortCtrl: AbortController | null = null
@@ -118,8 +123,7 @@ const countryOptions = [
   { value: 'EU', label: '🇪🇺 欧盟' },
   { value: 'VN', label: '🇻🇳 越南' },
 ]
-const countryNames: Record<string, string> = { US: '美国', EU: '欧盟', VN: '越南', CN: '中国' }
-function countryLabel(code: string) { return countryNames[code] || code }
+function countryLabel(code: string) { return (COUNTRY_NAMES as Record<string,string>)[code] || code }
 
 const materialTags = ref<string[]>([])
 const materialInput = ref('')
@@ -411,35 +415,12 @@ const showReport = computed(() => phase.value === 'done' && !!store.documents)
 
         <!-- 空状态：5 Agent 卡片 -->
         <div v-if="phase === 'idle'" class="agent-grid">
-          <div v-for="(a, i) in agents" :key="i" class="agent-card" :class="`color-${agentColors[i]}`" :style="{ animationDelay: `${i*0.08}s` }">
-            <div class="agent-icon" :class="`icon-${agentColors[i]}`">{{ a.icon }}</div>
-            <div class="agent-info">
-              <strong>{{ a.name }}</strong>
-              <p>{{ a.desc }}</p>
-            </div>
-            <el-tag size="small" round class="tag-idle">等待中</el-tag>
-          </div>
+          <PipelineAgentCard v-for="(a,i) in agents" :key="i" :agent="a" :index="i" state="idle" :color="agentColors[i]" :style="{ animationDelay: `${i*0.08}s` }" />
         </div>
 
         <!-- 运行状态：5 Agent 卡片激活 -->
         <div v-if="phase === 'running'" class="agent-grid">
-          <div
-            v-for="(a, i) in agents" :key="i"
-            class="agent-card live"
-            :class="[agentState(i), `color-${agentColors[i]}`]"
-          >
-            <div class="agent-top-bar" v-if="agentState(i) !== 'idle'" :class="`bar-${agentColors[i]}`"></div>
-            <div class="agent-icon" :class="`icon-${agentColors[i]}`">{{ agentState(i) === 'done' ? '✅' : agentState(i) === 'running' ? '🔄' : a.icon }}</div>
-            <div class="agent-info">
-              <strong>{{ a.name }}</strong>
-              <p>{{ logs[i] || a.desc }}</p>
-            </div>
-            <el-tag v-if="agentState(i) === 'done'" size="small" type="success" round>已完成</el-tag>
-            <el-tag v-else-if="agentState(i) === 'running'" size="small" class="tag-running" round>
-              <el-icon :size="12" style="margin-right:4px"><Loading /></el-icon>处理中
-            </el-tag>
-            <el-tag v-else size="small" round class="tag-idle">等待中</el-tag>
-          </div>
+          <PipelineAgentCard v-for="(a,i) in agents" :key="i" :agent="a" :index="i" :state="agentState(i)" :color="agentColors[i]" :log="logs[i]" />
         </div>
 
         <!-- 完成状态：报告视图 -->
@@ -586,124 +567,9 @@ const showReport = computed(() => phase.value === 'done' && !!store.documents)
 
     <!-- 申报文件预览模态框 -->
     <el-dialog v-model="showPreview" :title="previewType === 'customs' ? '报关单草单' : previewType === 'origin' ? '原产地证书申请书' : '合规声明'" width="80vw" top="3vh" destroy-on-close class="preview-dialog">
-      <!-- 报关单 -->
-      <div v-if="previewType === 'customs'" class="a4-doc">
-        <h2 class="a4-title">中华人民共和国海关出口货物报关单</h2>
-        <div class="a4-meta">
-          <span>预录入编号：{{ store.documents?.request_id || '—' }}</span>
-          <span>海关编号：________</span>
-          <span>申报日期：________</span>
-        </div>
-        <div class="a4-grid">
-          <div class="a4-row"><label>出口口岸</label><span></span></div>
-          <div class="a4-row"><label>运抵国（地区）</label><span>{{ countryLabel(store.tariffResult?.country || '') || '—' }}</span></div>
-          <div class="a4-row"><label>收发货人</label><span></span></div>
-          <div class="a4-row"><label>生产销售单位</label><span></span></div>
-          <div class="a4-row"><label>运输方式</label><span></span></div>
-          <div class="a4-row"><label>运输工具名称</label><span></span></div>
-          <div class="a4-row"><label>监管方式</label><span>一般贸易</span></div>
-          <div class="a4-row"><label>征免性质</label><span>一般征税</span></div>
-          <div class="a4-row"><label>成交方式</label><span></span></div>
-          <div class="a4-row"><label>合同协议号</label><span></span></div>
-          <div class="a4-row"><label>件数</label><span>{{ store.documents?.customs_declaration?.quantity || '—' }}</span></div>
-          <div class="a4-row"><label>包装种类</label><span></span></div>
-        </div>
-        <table class="a4-table">
-          <thead><tr><th>项号</th><th>商品名称</th><th>HS编码</th><th>数量及单位</th><th>单价</th><th>总价</th><th>币制</th><th>原产国</th><th>最终目的国</th><th>征免</th></tr></thead>
-          <tbody><tr>
-            <td>1</td>
-            <td>{{ store.documents?.customs_declaration?.commodity_name || '—' }}</td>
-            <td><code>{{ store.documents?.customs_declaration?.hs_code || '—' }}</code></td>
-            <td>{{ store.documents?.customs_declaration?.quantity || '—' }}{{ store.documents?.customs_declaration?.unit || '件' }}</td>
-            <td>{{ store.documents?.customs_declaration?.declared_value || '—' }}</td>
-            <td>{{ store.documents?.customs_declaration?.declared_value || '—' }}</td>
-            <td>USD</td>
-            <td>{{ countryLabel((store.documents?.customs_declaration?.origin as string) || 'CN') }}</td>
-            <td>{{ countryLabel(store.tariffResult?.country || '') || '—' }}</td>
-            <td>照章征税</td>
-          </tr></tbody>
-        </table>
-        <p class="a4-footer">申报单位签章：________ &nbsp;&nbsp; 日期：________</p>
-      </div>
-
-      <!-- 原产地证书 -->
-      <div v-if="previewType === 'origin'" class="a4-doc">
-        <h2 class="a4-title">原产地证书申请书</h2>
-        <div class="a4-meta">
-          <span>申请号：________</span>
-          <span>发票号：________</span>
-          <span>申请日期：________</span>
-        </div>
-        <div class="a4-grid">
-          <div class="a4-row"><label>申请人</label><span></span></div>
-          <div class="a4-row"><label>证书类型</label><span>{{ store.documents?.origin_certificate?.fta || '一般原产地证' }}</span></div>
-          <div class="a4-row"><label>出口国</label><span>{{ countryLabel('CN') }}</span></div>
-          <div class="a4-row"><label>进口国</label><span>{{ countryLabel(store.tariffResult?.country || '') || '—' }}</span></div>
-          <div class="a4-row"><label>HS编码</label><span><code>{{ store.documents?.origin_certificate?.hs_code || '—' }}</code></span></div>
-          <div class="a4-row"><label>原产地标准</label><span>{{ store.documents?.origin_certificate?.origin_criteria || '—' }}</span></div>
-          <div class="a4-row"><label>FOB总值（美元）</label><span>{{ store.documents?.customs_declaration?.declared_value || '—' }}</span></div>
-          <div class="a4-row"><label>拟出运日期</label><span>________</span></div>
-          <div class="a4-row"><label>数量/重量</label><span>{{ store.documents?.customs_declaration?.quantity || '—' }}{{ store.documents?.customs_declaration?.unit || '件' }}</span></div>
-          <div class="a4-row"><label>是否含进口成分</label><span>否</span></div>
-        </div>
-        <div class="a4-section">
-          <h4>适用 FTA</h4>
-          <p>{{ store.tariffResult?.fta_applied || '无' }}</p>
-        </div>
-        <div class="a4-section" v-if="store.originResult">
-          <h4>原产地分析</h4>
-          <p>推荐原产地：<b>{{ countryLabel(store.originResult?.recommended_origin || 'CN') }}</b></p>
-          <p>满足条件：{{ store.originResult.meeting_criteria?.join('、') || '—' }}</p>
-          <p v-if="store.originResult.rvc_percentage">区域价值成分：<b>{{ store.originResult.rvc_percentage }}%</b></p>
-          <p>{{ store.originResult.note }}</p>
-        </div>
-        <p class="a4-footer">申请人签章：________ &nbsp;&nbsp; 日期：________</p>
-      </div>
-
-      <!-- 合规声明 -->
-      <div v-if="previewType === 'compliance'" class="a4-doc">
-        <div class="compliance-hero" :class="store.complianceResult?.risk_level">
-          <h2>{{ store.complianceResult?.risk_level === 'red' ? '✗ 不合规' : store.complianceResult?.risk_level === 'yellow' ? '⚠ 部分合规' : '✓ 合规通过' }}</h2>
-        </div>
-        <h2 class="a4-title">跨境贸易合规声明</h2>
-        <div class="a4-meta">
-          <span>声明编号：CC-{{ store.documents?.request_id || '—' }}</span>
-          <span>生成日期：{{ new Date().toISOString().slice(0, 10) }}</span>
-        </div>
-        <div class="a4-section">
-          <h4>商品信息</h4>
-          <p>商品名称：{{ store.documents?.customs_declaration?.commodity_name || '—' }}</p>
-          <p>HS编码：{{ store.documents?.customs_declaration?.hs_code || '—' }} | 目标国：{{ countryLabel(store.tariffResult?.country || '') || '—' }}</p>
-        </div>
-        <div class="a4-section">
-          <h4>校验结果</h4>
-          <div class="checklist">
-            <div class="check-item" :class="{ fail: store.complianceResult?.sanctions_hit }">
-              <span class="check-mark">{{ store.complianceResult?.sanctions_hit ? '✗' : '☑' }}</span>
-              <span>制裁清单校验 — {{ store.complianceResult?.sanctions_hit ? '命中' : '通过' }}</span>
-            </div>
-            <div class="check-item" :class="{ fail: store.complianceResult?.license_required }">
-              <span class="check-mark">{{ store.complianceResult?.license_required ? '⚠' : '☑' }}</span>
-              <span>出口许可校验 — {{ store.complianceResult?.license_required ? '需要许可' : '无需许可' }}</span>
-            </div>
-            <div v-for="v in store.complianceResult?.violations" :key="v.category" class="check-item fail">
-              <span class="check-mark">✗</span>
-              <span>{{ v.category }} — {{ v.description }}</span>
-            </div>
-            <div class="check-item">
-              <span class="check-mark">☑</span><span>环保合规 — 符合 RoHS / REACH</span>
-            </div>
-            <div class="check-item">
-              <span class="check-mark">☑</span><span>知识产权校验 — 通过</span>
-            </div>
-          </div>
-        </div>
-        <div class="a4-section">
-          <h4>综合评定</h4>
-          <p>{{ store.documents?.compliance_statement }}</p>
-        </div>
-        <p class="a4-footer">本声明自生成之日起30日内有效 | AgenticCustoms 智能合规平台</p>
-      </div>
+      <PipelineCustomsPreview v-if="previewType === 'customs'" />
+      <PipelineOriginPreview v-if="previewType === 'origin'" />
+      <PipelineCompliancePreview v-if="previewType === 'compliance'" />
 
       <template #footer>
         <el-button @click="showPreview = false">关闭</el-button>

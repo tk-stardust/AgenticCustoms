@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { queryTariff } from '@/api/tariff'
+import { COUNTRY_NAMES } from '@/constants'
 import { usePipelineStore } from '@/stores/pipeline'
 import type { TariffCalcResponse } from '@/types'
 
@@ -109,10 +110,6 @@ function reset() {
   materialTags.value = []
 }
 
-const countryNames: Record<string, string> = {
-  US: '美国', EU: '欧盟', VN: '越南',
-}
-
 const tariffItems = computed(() => result.value?.tariff?.items || [])
 
 function goPipeline() {
@@ -180,7 +177,7 @@ function goPipeline() {
             </el-form-item>
             <el-form-item label="目标国家 / 地区" required>
               <el-select v-model="form.targetCountry" placeholder="请选择">
-                <el-option v-for="(name, code) in countryNames" :key="code" :value="code" :label="`${name} (${code})`" />
+                <el-option v-for="(name, code) in COUNTRY_NAMES" :key="code" :value="code" :label="`${name} (${code})`" />
               </el-select>
             </el-form-item>
             <el-form-item label="申报价值 (USD)">
@@ -201,7 +198,7 @@ function goPipeline() {
             </el-form-item>
             <el-form-item label="目标国家" required>
               <el-select v-model="form.targetCountry" placeholder="请选择">
-                <el-option v-for="(name, code) in countryNames" :key="code" :value="code" :label="`${name} (${code})`" />
+                <el-option v-for="(name, code) in COUNTRY_NAMES" :key="code" :value="code" :label="`${name} (${code})`" />
               </el-select>
             </el-form-item>
             <el-form-item label="申报价值 (USD)">
@@ -267,7 +264,7 @@ function goPipeline() {
         </div>
 
         <div class="result-body">
-          <div class="result-body-title">{{ countryNames[result.tariff.country] || result.tariff.country }} 进口税率明细</div>
+          <div class="result-body-title">{{ COUNTRY_NAMES[result.tariff.country] || result.tariff.country }} 进口税率明细</div>
 
           <el-table :data="tariffItems" stripe style="width:100%">
             <el-table-column prop="name" label="税费项目" />

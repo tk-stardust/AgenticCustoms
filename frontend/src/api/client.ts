@@ -52,6 +52,10 @@ client.interceptors.response.use(
       message = detail.map((e: { msg: string }) => e.msg).join('；')
     } else if (detail) {
       message = String(detail)
+    } else if (status === 502 || status === 503) {
+      message = '网络连接失败，请检查网络'
+    } else if (status >= 500) {
+      message = '服务器内部错误，请稍后重试'
     }
     return Promise.reject(new Error(message))
   },

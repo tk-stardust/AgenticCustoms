@@ -1,5 +1,6 @@
 """一键全流程接口"""
 
+import asyncio
 import io
 import os
 import subprocess
@@ -7,6 +8,8 @@ import tempfile
 import uuid
 import zipfile
 from urllib.parse import quote
+
+from shared.constants import COUNTRY_NAMES
 
 # Edge 浏览器路径（Windows 自带）
 _EDGE_PATHS = [
@@ -29,8 +32,8 @@ def _get_edge() -> str | None:
     return None
 
 
-def _html_to_pdf(html: str) -> bytes:
-    """通过 Edge 无头模式将 HTML 转为 PDF"""
+async def _html_to_pdf(html: str) -> bytes:
+    """通过 Edge 无头模式将 HTML 转为 PDF（异步，不阻塞事件循环）"""
     edge = _get_edge()
     if not edge:
         raise RuntimeError("未找到 Microsoft Edge，无法生成 PDF")
@@ -41,7 +44,8 @@ def _html_to_pdf(html: str) -> bytes:
 
     pdf_path = html_path.replace(".html", ".pdf")
     try:
-        subprocess.run(
+        await asyncio.to_thread(
+            subprocess.run,
             [edge, "--headless", f"--print-to-pdf={pdf_path}",
              "--no-pdf-header-footer", "--disable-gpu", html_path],
             check=True, timeout=30, capture_output=True,
@@ -109,13 +113,11 @@ A4_TPL = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title
 {body}
 </body></html>"""
 
-CN = {"US": "美国", "EU": "欧盟", "VN": "越南", "CN": "中国"}
-
 def _v(val, default="—"):
     return default if val is None or val == "" or val == "None" else val
 
 def _cn(code):
-    return CN.get(code, code or "—")
+    return COUNTRY_NAMES.get(code or "", code or "—")
 
 def _build_customs_html(doc: dict) -> str:
     d = doc.get("customs_declaration", {})
@@ -266,14 +268,14 @@ async def download_zip(request_id: str):
         if not row or not row.results:
             raise HTTPException(404, "记录不存在或无结果数据")
 
-    def _to_pdf(html: str) -> bytes:
-        return _html_to_pdf(html)
+    async def _to_pdf(html: str) -> bytes:
+        return await _html_to_pdf(html)
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("报关单草单.pdf", _to_pdf(_build_customs_html(row.results)))
-        zf.writestr("原产地证书申请书.pdf", _to_pdf(_build_origin_html(row.results)))
-        zf.writestr("合规声明.pdf", _to_pdf(_build_compliance_html(row.results)))
+        zf.writestr("报关单草单.pdf", await _to_pdf(_build_customs_html(row.results)))
+        zf.writestr("原产地证书申请书.pdf", await _to_pdf(_build_origin_html(row.results)))
+        zf.writestr("合规声明.pdf", await _to_pdf(_build_compliance_html(row.results)))
 
     buf.seek(0)
     name = row.commodity_name or request_id
@@ -310,7 +312,7 @@ async def download_pdf(request_id: str, doc_type: str):
 
     name = row.commodity_name or request_id
     filename = f"{name}_{doc_label}.pdf"
-    pdf_bytes = _html_to_pdf(builder(row.results))
+    pdf_bytes = await _html_to_pdf(builder(row.results))
     return Response(pdf_bytes, media_type="application/pdf", headers=_attachment(filename))
 
 

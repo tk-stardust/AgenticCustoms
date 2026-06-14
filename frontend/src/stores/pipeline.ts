@@ -57,6 +57,7 @@ export const usePipelineStore = defineStore('pipeline', () => {
       const res: PipelineFullResponse = await runFullPipeline(commodityInput, country, signal)
       requestId.value = res.request_id
       documents.value = res.documents
+      hsResult.value = res.hs_result
       tariffResult.value = res.tariff_result
       complianceResult.value = res.compliance_result
       originResult.value = res.origin_result

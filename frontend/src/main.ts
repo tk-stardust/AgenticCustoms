@@ -5,6 +5,7 @@ import 'element-plus/dist/index.css'
 import './styles/design-tokens.css'
 import './styles/global.css'
 import './styles/element-overrides.css'
+import './styles/a4.css'
 
 import App from './App.vue'
 import router from './router'

@@ -1,4 +1,4 @@
-from .enums import RiskLevel, TradeRoute, IntentType
+from .enums import RiskLevel
 from .commodity import Commodity
 from .hs_code import HsCodeResult
 from .tariff_result import TariffResult, TariffItem
@@ -8,8 +8,6 @@ from .declaration_doc import DeclarationDoc
 
 __all__ = [
     "RiskLevel",
-    "TradeRoute",
-    "IntentType",
     "Commodity",
     "HsCodeResult",
     "TariffResult",

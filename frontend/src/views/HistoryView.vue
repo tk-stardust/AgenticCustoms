@@ -6,6 +6,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { usePipelineStore } from '@/stores/pipeline'
 import client from '@/api/client'
 import { fetchHistory, type HistoryRecord } from '@/api/history'
+import { COUNTRY_FLAGS } from '@/constants'
 
 const router = useRouter()
 const pipelineStore = usePipelineStore()
@@ -130,7 +131,6 @@ watch([filter, search], () => {
 // keep-alive 切回来
 onActivated(readStoredFilter)
 
-const countryNames: Record<string, string> = { US: '🇺🇸 美国', EU: '🇪🇺 欧盟', VN: '🇻🇳 越南', CN: '🇨🇳 中国' }
 const statusMap: Record<string, { label: string; type: 'success'|'info'|'danger' }> = {
   completed: { label: '已完成', type: 'success' },
   failed: { label: '失败', type: 'danger' },
@@ -196,7 +196,7 @@ function statusLabel(r: HistoryRecord) { return statusMap[r.status]?.label || r.
               <template #default="{ row }"><code>{{ row.hs_code || '—' }}</code></template>
             </el-table-column>
             <el-table-column label="目标国" width="90">
-              <template #default="{ row }"><el-tag size="small" round>{{ countryNames[row.target_country] || row.target_country }}</el-tag></template>
+              <template #default="{ row }"><el-tag size="small" round>{{ COUNTRY_FLAGS[row.target_country] || row.target_country }}</el-tag></template>
             </el-table-column>
             <el-table-column label="风险等级" width="100">
               <template #default="{ row }">

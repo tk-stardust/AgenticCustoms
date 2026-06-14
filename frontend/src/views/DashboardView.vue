@@ -8,6 +8,7 @@ import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from
 import { CanvasRenderer } from 'echarts/renderers'
 import { fetchHistory, type HistoryRecord } from '@/api/history'
 import { fetchStats, type DashboardStats } from '@/api/stats'
+import { COUNTRY_NAMES } from '@/constants'
 
 use([PieChart, BarChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer])
 
@@ -45,10 +46,6 @@ async function loadData() {
 
 onMounted(loadData)
 
-const countryNames: Record<string, string> = {
-  US: '美国', EU: '欧盟', JP: '日本', KR: '韩国', CN: '中国', VN: '越南', GB: '英国', AU: '澳大利亚',
-}
-
 const pieOption = computed(() => ({
   title: { text: '申报国家分布', left: 'center', textStyle: { fontSize: 14, color: '#334155' } },
   tooltip: { trigger: 'item' as const },
@@ -56,7 +53,7 @@ const pieOption = computed(() => ({
   series: [{
     type: 'pie' as const, radius: ['45%', '72%'],
     data: stats.value.by_country?.length
-      ? stats.value.by_country.map(d => ({ name: countryNames[d.country] || d.country, value: d.count }))
+      ? stats.value.by_country.map(d => ({ name: COUNTRY_NAMES[d.country] || d.country, value: d.count }))
       : [
         { name: '🇺🇸 美国', value: 45, itemStyle: { color: '#3b82f6' } },
         { name: '🇪🇺 欧盟', value: 30, itemStyle: { color: '#8b5cf6' } },
@@ -159,7 +156,7 @@ function goRiskHistory() {
             <template #default="{row}"><code>{{ row.hs_code }}</code></template>
           </el-table-column>
           <el-table-column label="目标国" width="100">
-            <template #default="{row}"><el-tag size="small" round>{{ countryNames[row.target_country] || row.target_country }}</el-tag></template>
+            <template #default="{row}"><el-tag size="small" round>{{ COUNTRY_NAMES[row.target_country] || row.target_country }}</el-tag></template>
           </el-table-column>
           <el-table-column label="风险等级" width="100">
             <template #default="{row}">
