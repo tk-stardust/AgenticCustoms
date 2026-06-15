@@ -1,26 +1,42 @@
 <script setup lang="ts">
-import { ref, computed, onDeactivated, onMounted, onActivated } from 'vue'
+import { ref, computed, onMounted, onDeactivated, onActivated } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { usePipelineStore } from '@/stores/pipeline'
 import type { Commodity } from '@/types'
+import { Search, MagicStick, CopyDocument, Check, Camera, Loading } from '@element-plus/icons-vue'
+import { useMaterialTags } from '@/composables/useMaterialTags'
+import { useOcr } from '@/composables/useOcr'
 
 const route = useRoute()
-import { Search, MagicStick, CopyDocument, Check, Camera, Loading } from '@element-plus/icons-vue'
-import { ocrImage } from '@/api/ocr'
-
 const store = usePipelineStore()
 const emptyClassify = (): Commodity => ({ name:'',description:'',material:'',function:'',usage:'' })
 const form = ref<Commodity>(emptyClassify())
+
+const { loading: ocrLoading, result: ocrResult, upload: ocrUpload, markEdited: onFieldEdit } = useOcr()
+
+// material ref 桥接 form.material 到 composable
+const materialRef = computed({
+  get: () => form.value.material || '',
+  set: (v) => { form.value.material = v }
+})
+const { tags: materialTags, input: materialInput, add: addMaterialTag, remove: removeTag } = useMaterialTags(materialRef, onFieldEdit)
+
+async function onUpload(e: Event) {
+  await ocrUpload(e, form.value, (res) => {
+    if (res.material) {
+      materialTags.value = res.material.split('/').filter(Boolean)
+    }
+  })
+}
+
 onMounted(() => {
-  // 从聊天助手跳转：读取结构化参数预填表单
   const q = route.query.q as string
   if (q) form.value.name = q
   if (route.query.name) form.value.name = route.query.name as string
   if (route.query.description) form.value.description = route.query.description as string
   if (route.query.material) { form.value.material = route.query.material as string; materialTags.value = (route.query.material as string).split('/').filter(Boolean) }
   if (route.query.function) form.value.function = route.query.function as string
-  // 参数齐全 + auto 标志 → 自动开始归类
   if (route.query.auto === '1' && form.value.name.trim() && form.value.description.trim()) {
     setTimeout(() => onSubmit(), 300)
   }
@@ -32,6 +48,8 @@ function clearForm() {
 }
 function clearResult() {
   store.reset()
+  manualCorrected.value = false
+  originalCode.value = ''
 }
 onDeactivated(() => {
   if (stepTimer) { clearInterval(stepTimer); stepTimer = null }
@@ -42,55 +60,9 @@ onActivated(() => {
   }
 })
 const loadingStep = ref(0)
-const ocrLoading = ref(false)
-const ocrResult = ref<Commodity | null>(null)  // 仅存 OCR 识别结果，手动输入不触发
-const lastFileKey = ref('')   // 上次上传的文件标识（name+size+lastModified）
-const formEdited = ref(false)  // OCR 后用户是否手动改过表单
-function onFieldEdit() { formEdited.value = true }
-const materialTags = ref<string[]>([])
-const materialInput = ref('')
-function addMaterialTag() {
-  const v = materialInput.value.trim()
-  if (!v) return
-  const parts = v.split(/[/+、,；\s]+/).filter(Boolean)
-  for (const p of parts) {
-    if (!materialTags.value.includes(p)) materialTags.value.push(p)
-  }
-  form.value.material = materialTags.value.join('/')
-  materialInput.value = ''
-}
-function removeTag(idx: number) {
-  materialTags.value.splice(idx, 1)
-  form.value.material = materialTags.value.join('/')
-}
+
 let stepTimer: ReturnType<typeof setInterval> | null = null
 
-async function onUpload(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (!file) return
-  const thisKey = `${file.name}|${file.size}|${file.lastModified}`
-  if (thisKey === lastFileKey.value && !formEdited.value) { (e.target as HTMLInputElement).value = ''; return }
-  ocrLoading.value = true
-  try {
-    const base64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve((reader.result as string).split(',')[1])
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
-    const result = await ocrImage(base64, file.type)
-    form.value.name = result.name || form.value.name
-    form.value.description = result.description || form.value.description
-    form.value.material = result.material || form.value.material
-    if (result.material) materialTags.value = result.material.split('/').filter(Boolean)
-    form.value.function = result.function || form.value.function
-    form.value.usage = result.usage || form.value.usage
-    ocrResult.value = { ...result }
-    lastFileKey.value = thisKey
-    formEdited.value = false
-  } catch { /* ignored */ }
-  finally { ocrLoading.value = false; (e.target as HTMLInputElement).value = '' }
-}
 const collActive = ref<string[]>(['reasoning'])
 
 async function onSubmit() {
@@ -101,9 +73,13 @@ async function onSubmit() {
   await store.runClassify({...form.value})
   if(stepTimer){clearInterval(stepTimer);stepTimer=null}
   loadingStep.value=3
+  manualCorrected.value = false
+  originalCode.value = ''
 }
 async function reRun() {
   store.reset()
+  manualCorrected.value = false
+  originalCode.value = ''
   await onSubmit()
 }
 const confidenceType = computed(()=>{
@@ -120,16 +96,35 @@ function highlightCitation(text: string): string {
     .replace(/注释\s*[一二三四五六七八九十]/g, '<mark>$&</mark>')
 }
 const showManual=ref(false); const manualHs=ref('')
+const manualCorrected = ref(false)
+const originalCode = ref('')
 function submitManual() {
   const code = manualHs.value.trim()
   if (!code) { ElMessage.warning('请输入HS编码'); return }
   if (!/^\d{6,12}$/.test(code.replace(/\./g,''))) { ElMessage.warning('请输入6-12位数字HS编码'); return }
-  if (store.hsResult) store.hsResult.code = code
+  if (store.hsResult) {
+    if (!originalCode.value) originalCode.value = store.hsResult.code
+    store.hsResult.code = code
+    manualCorrected.value = true
+  }
   showManual.value = false
+  manualHs.value = ''
   ElMessage.success('HS编码已更新')
 }
-async function copyCode(){ if(!store.hsResult) return; await navigator.clipboard.writeText(store.hsResult.code) }
-const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 章...','匹配历史归类案例...','LLM 推理合成中...']
+function undoManual() {
+  if (store.hsResult && originalCode.value) {
+    store.hsResult.code = originalCode.value
+    originalCode.value = ''
+    manualCorrected.value = false
+    ElMessage.success('已恢复AI推理编码')
+  }
+}
+async function copyCode(){
+  if(!store.hsResult) return
+  try { await navigator.clipboard.writeText(store.hsResult.code) }
+  catch { ElMessage.warning('复制失败，请手动复制') }
+}
+const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释与归类规则...','匹配历史归类案例...','LLM 推理合成中...']
 </script>
 
 <template>
@@ -231,7 +226,14 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
         <!-- 结果 -->
         <template v-if="store.hsResult">
           <div class="result-hero">
-            <div><div class="hs-label">HS 编码</div><div class="hs-code">{{ store.hsResult.code }}</div><p class="hs-desc">{{ store.hsResult.description }}</p></div>
+            <div>
+              <div class="hs-label">
+                HS 编码
+                <span v-if="manualCorrected" class="manual-badge">已人工修正</span>
+              </div>
+              <div class="hs-code">{{ store.hsResult.code }}</div>
+              <p class="hs-desc">{{ store.hsResult.description }}</p>
+            </div>
             <button class="copy-btn" @click="copyCode" title="复制编码"><el-icon :size="18"><CopyDocument/></el-icon></button>
           </div>
           <div class="confidence-bar">
@@ -248,9 +250,20 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
               <div v-for="(c,i) in store.hsResult.citations" :key="i" class="citation-card" :style="{animationDelay:`${i*.08}s`}" v-html="highlightCitation(c)"></div>
             </el-collapse-item>
           </el-collapse>
+          <!-- 备选编码 -->
+          <el-collapse v-if="store.hsResult.alternatives && store.hsResult.alternatives.length > 0" class="reasoning-collapse">
+            <el-collapse-item title="备选编码" name="alternatives">
+              <div v-for="(alt, i) in store.hsResult.alternatives" :key="i" class="alt-row" :style="{animationDelay:`${i*.06}s`}">
+                <code class="alt-code">{{ alt.code }}</code>
+                <span class="alt-desc">{{ alt.description }}</span>
+                <span class="alt-conf">{{ (alt.confidence*100).toFixed(1) }}%</span>
+              </div>
+            </el-collapse-item>
+          </el-collapse>
           <div class="result-actions">
             <button class="btn-ghost" @click="reRun">重新推理</button>
             <button class="btn-text" @click="showManual=!showManual">人工修正</button>
+            <button v-if="manualCorrected" class="btn-text" @click="undoManual">撤销修正</button>
           </div>
           <div v-if="showManual" class="manual-fix">
             <el-input v-model="manualHs" placeholder="输入正确的 HS 编码" size="small" style="margin-right:8px" @keydown.enter="submitManual"/>
@@ -349,9 +362,10 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
 /* 结果 */
 .panel-result.has-result{background:linear-gradient(180deg,rgba(13,148,136,.02) 0%,#fff 30%)}
 .result-hero{display:flex;justify-content:space-between;align-items:flex-start;animation:fadeUp .4s cubic-bezier(.4,0,.2,1)}
-.hs-label{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em}
+.hs-label{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:8px}
 .hs-code{font-family:'JetBrains Mono',monospace;font-size:36px;font-weight:700;color:#1e293b;letter-spacing:3px;margin:4px 0}
 .hs-desc{font-size:14px;color:#64748b;margin-top:4px}
+.manual-badge{font-size:11px;color:#d97706;background:rgba(245,158,11,.12);padding:2px 8px;border-radius:4px;text-transform:none;letter-spacing:0;font-weight:500}
 .copy-btn{width:40px;height:40px;border-radius:10px;background:rgba(13,148,136,.06);border:1px solid #e2e8f0;color:#0d9488;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
 .copy-btn:hover{background:rgba(13,148,136,.12)}
 .confidence-bar{margin:20px 0}
@@ -367,8 +381,11 @@ const loadingLogs = ['正在拆解商品特征...','检索 WCO 注释第 84-85 �
 .reasoning-list li{font-size:13px;color:#64748b;line-height:1.7;margin-bottom:6px;animation:fadeUp .3s cubic-bezier(.4,0,.2,1) both}
 .citation-card{padding:10px 14px;border-radius:8px;background:rgba(13,148,136,.04);font-size:13px;color:#475569;margin-bottom:6px;animation:fadeUp .25s cubic-bezier(.4,0,.2,1) both}
 .citation-card :deep(mark){background:rgba(245,158,11,.2);color:#b45309;padding:1px 4px;border-radius:3px;font-weight:600}
+/* 备选编码 */
 .alt-title{font-size:13px;font-weight:600;color:#334155;margin-bottom:6px}
-.alt-row{display:flex;align-items:center;gap:8px;font-size:13px;color:#64748b;margin-bottom:4px}
+.alt-row{display:flex;align-items:center;gap:8px;font-size:13px;color:#64748b;margin-bottom:4px;animation:fadeUp .25s cubic-bezier(.4,0,.2,1) both;padding:6px 12px;border-radius:6px;background:rgba(13,148,136,.02)}
+.alt-code{font-family:'JetBrains Mono',monospace;font-weight:600;color:#0d9488;font-size:13px}
+.alt-desc{flex:1;color:#475569;font-size:12px}
 .alt-conf{color:#94a3b8;font-size:12px;margin-left:auto}
 .result-actions{display:flex;gap:12px;margin-top:24px;padding-top:16px;border-top:1px solid #f1f5f9}
 .manual-fix{display:flex;margin-top:12px}

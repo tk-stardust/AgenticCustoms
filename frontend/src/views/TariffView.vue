@@ -6,6 +6,7 @@ import { Search } from '@element-plus/icons-vue'
 import { queryTariff } from '@/api/tariff'
 import { COUNTRY_NAMES } from '@/constants'
 import { usePipelineStore } from '@/stores/pipeline'
+import { useMaterialTags } from '@/composables/useMaterialTags'
 import type { TariffCalcResponse } from '@/types'
 
 const route = useRoute()
@@ -51,22 +52,11 @@ const loading = ref(false)
 const loadingStep = ref(0)
 const result = ref<TariffCalcResponse | null>(null)
 let stepTimer: ReturnType<typeof setInterval> | null = null
-const materialTags = ref<string[]>([])
-const materialInput = ref('')
-function addMaterialTag() {
-  const v = materialInput.value.trim()
-  if (!v) return
-  const parts = v.split(/[/+、,；\s]+/).filter(Boolean)
-  for (const p of parts) {
-    if (!materialTags.value.includes(p)) materialTags.value.push(p)
-  }
-  form.value.material = materialTags.value.join('/')
-  materialInput.value = ''
-}
-function removeTag(idx: number) {
-  materialTags.value.splice(idx, 1)
-  form.value.material = materialTags.value.join('/')
-}
+const materialRef = computed({
+  get: () => form.value.material || '',
+  set: (v) => { form.value.material = v }
+})
+const { tags: materialTags, input: materialInput, add: addMaterialTag, remove: removeTag } = useMaterialTags(materialRef)
 
 const stepTotal = computed(() => mode.value === 'auto' ? 4 : 3)
 const autoSteps = ['正在拆解商品特征...', '检索 WCO 注释与税则...', '匹配历史归类案例...', 'LLM 推理合成 + 税率查询中...']

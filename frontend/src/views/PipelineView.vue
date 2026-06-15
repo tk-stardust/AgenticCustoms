@@ -5,9 +5,10 @@ import { ElMessage } from 'element-plus'
 import { usePipelineStore } from '@/stores/pipeline'
 import type { Commodity } from '@/types'
 import { Check, Loading, Camera, QuestionFilled, MagicStick } from '@element-plus/icons-vue'
-import { ocrImage } from '@/api/ocr'
 import { runPipelineSSE } from '@/api/pipeline'
 import { COUNTRY_NAMES } from '@/constants'
+import { useMaterialTags } from '@/composables/useMaterialTags'
+import { useOcr } from '@/composables/useOcr'
 import PipelineAgentCard from '@/components/PipelineAgentCard.vue'
 import PipelineCustomsPreview from '@/components/PipelineCustomsPreview.vue'
 import PipelineOriginPreview from '@/components/PipelineOriginPreview.vue'
@@ -112,7 +113,7 @@ const agents = [
 
 const logs = [
   '正在解析商品材质与功能特征...',
-  '检索第 84-85 章税则品目...',
+  '检索 WCO 注释与归类规则...',
   '匹配 OFAC/商务部制裁清单...',
   '比对 RCEP 原产地规则...',
   '生成报关单 + 交叉校验...',
@@ -125,13 +126,20 @@ const countryOptions = [
 ]
 function countryLabel(code: string) { return (COUNTRY_NAMES as Record<string,string>)[code] || code }
 
-const materialTags = ref<string[]>([])
-const materialInput = ref('')
-const ocrLoading = ref(false)
-const ocrResult = ref<Commodity | null>(null)
-const lastFileKey = ref('')
-const formEdited = ref(false)
-function onFieldEdit() { formEdited.value = true }
+const materialRef = computed({
+  get: () => form.value.material || '',
+  set: (v) => { form.value.material = v }
+})
+const { loading: ocrLoading, result: ocrResult, upload: ocrUpload, markEdited: onFieldEdit } = useOcr()
+const { tags: materialTags, input: materialInput, add: addMaterialTag, remove: removeTag } = useMaterialTags(materialRef, onFieldEdit)
+
+async function onUpload(e: Event) {
+  await ocrUpload(e, form.value, (res) => {
+    if (res.material) {
+      materialTags.value = res.material.split('/').filter(Boolean)
+    }
+  })
+}
 
 // 同票多商品项
 interface CommodityRow { name: string; hs_code: string; quantity: number; declared_value: number }
@@ -141,48 +149,6 @@ function addRow() {
 }
 function removeRow(idx: number) {
   commodityRows.value.splice(idx, 1)
-}
-
-async function onUpload(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (!file) return
-  const thisKey = `${file.name}|${file.size}|${file.lastModified}`
-  if (thisKey === lastFileKey.value && !formEdited.value) { (e.target as HTMLInputElement).value = ''; return }
-  ocrLoading.value = true
-  try {
-    const base64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve((reader.result as string).split(',')[1])
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
-    const result = await ocrImage(base64, file.type)
-    form.value.name = result.name || form.value.name
-    form.value.description = result.description || form.value.description
-    form.value.material = result.material || form.value.material
-    form.value.function = result.function || form.value.function
-    form.value.usage = result.usage || form.value.usage
-    if (result.material) materialTags.value = result.material.split('/').filter(Boolean)
-    ocrResult.value = { ...result }
-    lastFileKey.value = thisKey
-    formEdited.value = false
-  } catch { /* ignored */ }
-  finally { ocrLoading.value = false; (e.target as HTMLInputElement).value = '' }
-}
-
-function addMaterialTag() {
-  const v = materialInput.value.trim()
-  if (!v) return
-  const parts = v.split(/[/+、,；\s]+/).filter(Boolean)
-  for (const p of parts) {
-    if (!materialTags.value.includes(p)) materialTags.value.push(p)
-  }
-  form.value.material = materialTags.value.join('/')
-  materialInput.value = ''
-}
-function removeTag(idx: number) {
-  materialTags.value.splice(idx, 1)
-  form.value.material = materialTags.value.join('/')
 }
 
 function clearForm() {

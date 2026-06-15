@@ -35,6 +35,7 @@ export const usePipelineStore = defineStore('pipeline', () => {
   async function runClassify(input: Commodity) {
     commodity.value = input
     currentStep.value = 'classifying'
+    hsResult.value = null
     classifyLoading.value = true
     errors.value = []
     try {
@@ -51,6 +52,7 @@ export const usePipelineStore = defineStore('pipeline', () => {
     commodity.value = commodityInput
     targetCountry.value = country
     currentStep.value = 'classifying'
+    hsResult.value = null
     loading.value = true
     errors.value = []
     try {
